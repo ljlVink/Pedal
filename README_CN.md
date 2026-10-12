@@ -6,16 +6,14 @@
 
 **ArkTS 反编译器**
 
-应用图标使用 Pedal 字标，标题栏仅显示居中的标题文字。
-
 方舟字节码（`.abc` / HAP）反编译 · pandasm 反汇编 · 归档浏览与编辑 · [pedal-abc-bridge](crates/pedal-abc-bridge/) 纯 Rust 引擎
 
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-f74c00?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![egui](https://img.shields.io/badge/egui-0.34-1ba7f5)](https://github.com/emilk/egui)
-[![Platform](https://img.shields.io/badge/Platform-Windows_·_macOS_·_Linux-8957e5)](#运行要求)
+[![Platform](https://img.shields.io/badge/Platform-Windows_·_macOS_·_Linux-8957e5)](#构建)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)</br>
 
-[特性](#特性) · [运行要求](#运行要求) · [构建](#构建) · [快捷键](#快捷键) · [English](README.md)
+[特性](#特性) · [构建](#构建) · [English](README.md)
 
 </div>
 
@@ -53,10 +51,6 @@
 - **导出反编译源码**（`Ctrl+Shift+E`）- 导出伪 ArkTS（`.ets`）到指定目录，保留包结构
 - **导出 JAR**（`Ctrl+Shift+S`）/ **保存 / 覆盖源归档**（`Ctrl+S`）- 面向普通（非 ArkTS）归档：将内存中的已修改条目写回或生成新归档。ArkTS 工作区为只读，暂不支持写回（HAP 重打包）
 
-## 运行要求
-
-无额外运行时依赖 - 方舟字节码解析与反编译全部为纯 Rust，进程内完成。
-
 ## 构建
 
 ```bash
@@ -65,23 +59,6 @@ cargo run --release
 ```
 
 Linux 构建依赖：`libxkbcommon-dev libwayland-dev libwayland-egl-backend-dev libasound2-dev`。
-
-## 快捷键
-
-| 快捷键 | 操作 |
-|:-------|:-----|
-| `Ctrl+O` | 打开归档或单文件 |
-| `Ctrl+S` | 保存编辑 / 覆盖当前归档 |
-| `Ctrl+F` | 查找 |
-| `Double Shift` | 全局搜索 |
-| `Tab` | 切换 源码 / 反汇编 视图 |
-| `Alt+1` | 切换资源树 |
-| `Ctrl+Shift+S` | 导出 JAR |
-| `Ctrl+Shift+E` | 导出反编译源码 |
-| `Ctrl+,` | 设置 |
-
-所有快捷键可在设置中自定义。
-
 
 ## 许可证
 
