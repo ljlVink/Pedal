@@ -10,11 +10,10 @@ eframe = { version = "0.34.1", default-features = false, features = ["glow"] }
 egui-shell = { path = "../egui-shell" }
 tabookit = { path = "../tabookit" }
 tree-sitter = "0.24"
-tree-sitter-java = "0.23"
 tree-sitter-xml = "0.7"
 tree-sitter-yaml = "0.7"
 tree-sitter-json = "0.24"
 tree-sitter-html = "0.23"
 tree-sitter-sequel = "0.3"
-tree-sitter-kotlin-sg = "0.4.0"
+tree-sitter-typescript = "0.23"
 phf = { version = "0.11", features = ["macros"] }

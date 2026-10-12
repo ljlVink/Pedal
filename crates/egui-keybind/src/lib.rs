@@ -126,6 +126,8 @@ impl fmt::Debug for KeyBind {
     }
 }
 
+type KeyBinding<T> = (KeyBind, fn(&mut T));
+
 /// 快捷键映射表：将 `KeyBind` 绑定到 `fn(&mut T)` 回调，自动处理每帧检测与分发
 ///
 /// 使用时需 `std::mem::take` 临时取出，避免自引用借用：
@@ -135,7 +137,7 @@ impl fmt::Debug for KeyBind {
 /// self.keys = keys;
 /// ```
 pub struct KeyMap<T> {
-    bindings: Vec<(KeyBind, fn(&mut T))>,
+    bindings: Vec<KeyBinding<T>>,
     double_shift: Option<DoubleShiftBinding<T>>,
     /// 上次 dispatch 的帧号，防止同一帧多 pass 重复消费
     last_frame: u64,
@@ -201,7 +203,7 @@ impl<T> KeyMap<T> {
         self.bindings.push((keybind, handler));
         // 按修饰键数量降序排列，确保更具体的快捷键优先匹配
         self.bindings
-            .sort_by(|a, b| b.0.modifier_count().cmp(&a.0.modifier_count()));
+            .sort_by_key(|binding| std::cmp::Reverse(binding.0.modifier_count()));
         self
     }
 
@@ -228,10 +230,10 @@ impl<T> KeyMap<T> {
                 handler(target);
             }
         }
-        if let Some(ds) = &mut self.double_shift {
-            if ds.detector.update(ctx) {
-                (ds.handler)(target);
-            }
+        if let Some(ds) = &mut self.double_shift
+            && ds.detector.update(ctx)
+        {
+            (ds.handler)(target);
         }
     }
 }

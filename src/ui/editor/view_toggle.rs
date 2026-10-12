@@ -1,22 +1,23 @@
-//! Decompiled / Bytecode / Hex 三视图切换
+//! 文本 / Hex / ArkTS 反汇编视图切换
 //!
 //! @author sky
+//! @author ljlVink
 
 /// 活跃视图
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ActiveView {
     Decompiled,
-    Bytecode,
     Hex,
+    /// ArkTS 反汇编视图（.ets tab 专属）
+    Disasm,
 }
 
 impl ActiveView {
-    /// 在 Decompiled 和 Bytecode 之间切换（不含 Hex）
-    pub fn next(self) -> Self {
+    /// ArkTS tab 的视图循环：源码 ↔ 反汇编
+    pub fn next_ark(self) -> Self {
         match self {
-            Self::Decompiled => Self::Bytecode,
-            Self::Bytecode => Self::Decompiled,
-            Self::Hex => Self::Decompiled,
+            Self::Disasm => Self::Decompiled,
+            _ => Self::Disasm,
         }
     }
 }

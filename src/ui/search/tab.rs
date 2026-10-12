@@ -4,6 +4,7 @@
 //! 索引和搜索均在后台线程执行，UI 线程零阻塞。
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::index::{self, MAX_MATCHES, SearchIndex, SearchMessage};
 use super::result::SearchResultGroup;
@@ -12,6 +13,7 @@ use crate::appearance::theme::flat_button_theme;
 use crate::appearance::{codicon, theme};
 use eframe::egui;
 use egui_editor::LayoutCache;
+use egui_editor::code_view::CodeViewConfig;
 use egui_editor::highlight::{self, Span};
 use egui_editor::search::FindMatch;
 use egui_shell::components::{FlatButton, FloatingWindow};
@@ -137,28 +139,6 @@ tabookit::class! {
             c.store(true, Ordering::Relaxed);
         }
         self.search_rx = None;
-    }
-
-    /// 用指定查询文本打开搜索面板并立即搜索（Find Usages 用）
-    pub fn open_with_query(&mut self, query: &str) {
-        if self.search_index.is_none() {
-            return;
-        }
-        // 取消旧搜索
-        if let Some(c) = self.search_cancel.take() {
-            c.store(true, Ordering::Relaxed);
-        }
-        self.search_rx = None;
-        self.window.open();
-        self.focus_input = false;
-        self.query = query.to_string();
-        self.prev_query = query.to_string();
-        self.results.clear();
-        self.selected = None;
-        self.result_summary = None;
-        self.preview_cache = None;
-        self.debounce_deadline = None;
-        self.dispatch_search();
     }
 
     /// 同步搜索状态（App 每帧调用）
@@ -368,7 +348,7 @@ tabookit::class! {
                 egui::pos2(rect.left(), divider_y),
                 egui::pos2(rect.right(), divider_y),
             ],
-            egui::Stroke::new(1.0, theme::BORDER),
+            egui::Stroke::new(1.0_f32, theme::BORDER),
         );
         // 预览面板
         let preview_rect = egui::Rect::from_min_max(
@@ -439,23 +419,20 @@ tabookit::class! {
                 if let Some(i) = toggle_idx {
                     self.results[i].expanded = !self.results[i].expanded;
                 }
-                if let Some(key) = dbl_click.or(click) {
-                    if self.selected != Some(key) {
+                if let Some(key) = dbl_click.or(click)
+                    && self.selected != Some(key) {
                         self.selected = Some(key);
                         self.scroll_to_match = true;
                     }
-                }
                 // 双击打开文件
-                if let Some((gi, mi)) = dbl_click {
-                    if let Some(group) = self.results.get(gi) {
-                        if let Some(m) = group.matches.get(mi) {
+                if let Some((gi, mi)) = dbl_click
+                    && let Some(group) = self.results.get(gi)
+                        && let Some(m) = group.matches.get(mi) {
                             self.pending_open = Some(SearchOpenRequest {
                                 entry_path: group.entry_path.clone(),
                                 line: m.line,
                             });
                         }
-                    }
-                }
                 ui.add_space(4.0);
             });
     }
@@ -485,7 +462,7 @@ tabookit::class! {
             .is_none_or(|c| c.key != cache_key);
         if need_recompute {
             let source = entry.source.clone();
-            let lang = highlight::Language::Java;
+            let lang = highlight::Language::from_filename(&entry.entry_path);
             let spans = highlight::compute_spans(&source, lang);
             let find_matches = widget::compute_find_matches(&source, match_line, &m.highlights);
             self.preview_cache = Some(PreviewCache {
@@ -526,16 +503,16 @@ tabookit::class! {
         scroll.show(ui, |ui| {
             egui_editor::code_view::code_view(
                 ui,
-                egui::Id::new("search_preview_cv"),
                 &cache.source,
                 &cache.spans,
                 &[],
-                &cache.find_matches,
-                Some(0),
-                &t,
+                CodeViewConfig {
+                    matches: &cache.find_matches,
+                    current: Some(0),
+                    ..CodeViewConfig::new(egui::Id::new("search_preview_cv"), &t)
+                },
                 &mut cache.layout_cache,
                 &mut hl_line,
-                None,
             );
         });
     }

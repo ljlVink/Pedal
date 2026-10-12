@@ -82,7 +82,7 @@ tabookit::class! {
     /// 渲染弹出列表中的条目
     fn render_entries(&mut self, ui: &mut egui::Ui, entries: &[FileEntry]) {
         let font = egui::FontId::proportional(11.5);
-        for (_i, entry) in entries.iter().enumerate() {
+        for entry in entries.iter() {
             let (rect, resp) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), theme::MODIFIED_POPUP_ITEM_HEIGHT),
                 egui::Sense::click(),
@@ -215,7 +215,7 @@ impl StatusItem for ModifiedCountItem {
                 .show(ui.ctx(), |ui| {
                     let frame = egui::Frame::NONE
                         .fill(theme::BG_LIGHT)
-                        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+                        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
                         .corner_radius(4.0)
                         .shadow(egui::Shadow {
                             spread: 1,
@@ -237,12 +237,12 @@ impl StatusItem for ModifiedCountItem {
                     });
                 });
             // 点击弹出区域外关闭
-            if ui.ctx().input(|i| i.pointer.any_pressed()) {
-                if let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin()) {
-                    let area_rect = area_resp.response.rect;
-                    if !area_rect.contains(pos) && !interact_rect.contains(pos) {
-                        self.popup_open = false;
-                    }
+            if ui.ctx().input(|i| i.pointer.any_pressed())
+                && let Some(pos) = ui.ctx().input(|i| i.pointer.press_origin())
+            {
+                let area_rect = area_resp.response.rect;
+                if !area_rect.contains(pos) && !interact_rect.contains(pos) {
+                    self.popup_open = false;
                 }
             }
         }

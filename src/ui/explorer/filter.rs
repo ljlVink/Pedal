@@ -156,7 +156,7 @@ impl FilePanel {
         painter.rect_stroke(
             bar_rect,
             4.0,
-            egui::Stroke::new(1.0, theme::BORDER),
+            egui::Stroke::new(1.0_f32, theme::BORDER),
             egui::StrokeKind::Middle,
         );
         // 搜索图标

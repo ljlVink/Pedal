@@ -137,7 +137,7 @@ macro_rules! class {
         }
     };
 
-    // 有泛型 — 进入 TT muncher 提取 <> 内容
+    // 有泛型 - 进入 TT muncher 提取 <> 内容
     (
         $(#[$attr:meta])*
         $vis:vis struct $name:ident < $($rest:tt)*

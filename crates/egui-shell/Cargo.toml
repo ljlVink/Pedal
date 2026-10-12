@@ -8,7 +8,6 @@ license = "MIT"
 [dependencies]
 eframe = { version = "0.34.1", default-features = false, features = ["glow"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
-resvg = "0.47"
 egui-animation = { path = "../egui-animation" }
 egui-keybind = { path = "../egui-keybind" }
 tabookit = { path = "../tabookit" }

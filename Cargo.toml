@@ -1,12 +1,13 @@
 [workspace]
-members = [".", "crates/egui-animation", "crates/egui-editor", "crates/egui-hex-view", "crates/egui-keybind", "crates/egui-notify", "crates/egui-shell", "crates/pervius-java-bridge", "crates/tabookit"]
+members = [".", "crates/egui-animation", "crates/egui-editor", "crates/egui-hex-view", "crates/egui-keybind", "crates/egui-notify", "crates/egui-shell", "crates/pedal-abc-bridge", "crates/pedal-archive", "crates/tabookit"]
 
 [package]
-name = "pervius"
-version = "0.2.1"
+name = "pedal"
+version = "0.0.1"
 edition = "2024"
 
 [dependencies]
+mimalloc = "0.1"
 log = "0.4"
 env_logger = "0.11"
 eframe = { version = "0.34.1", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
@@ -17,17 +18,14 @@ egui-editor = { path = "crates/egui-editor" }
 egui-hex-view = { path = "crates/egui-hex-view" }
 egui-keybind = { path = "crates/egui-keybind", features = ["serde"] }
 egui-shell = { path = "crates/egui-shell" }
-pervius-java-bridge = { path = "crates/pervius-java-bridge" }
+pedal-abc-bridge = { path = "crates/pedal-abc-bridge" }
+pedal-archive = { path = "crates/pedal-archive" }
 tabookit = { path = "crates/tabookit" }
 serde = { version = "1", features = ["derive"] }
-toml = "1"
-zip = "2"
 rfd = "0.15"
 encoding_rs = "0.8"
 chardetng = "1"
 sha2 = "0.11"
-dirs = "6"
-ristretto_classfile = "0.30"
 indexmap = "2"
 regex = "1"
 rust-i18n = "3"

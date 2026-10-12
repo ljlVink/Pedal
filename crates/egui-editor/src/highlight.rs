@@ -5,14 +5,14 @@
 //! 仅覆盖 JAR 内可能出现的文件类型。
 //!
 //! @author sky
+//! @author ljlVink
 
 #[macro_use]
 mod macros;
+mod arkts;
 mod bytecode;
 mod html;
-mod java;
 mod json;
-mod kotlin;
 mod properties;
 mod sql;
 mod xml;
@@ -73,14 +73,13 @@ impl TokenKind {
 
 define_languages! {
     ts {
-        Java(java) = tree_sitter_java::LANGUAGE => ["java"],
-        /// Kotlin（tree-sitter-kotlin）
-        Kotlin(kotlin) = tree_sitter_kotlin_sg::LANGUAGE => ["kt", "kts"],
         Xml(xml) = tree_sitter_xml::LANGUAGE_XML => ["xml", "fxml", "pom"],
         Yaml(yaml) = tree_sitter_yaml::LANGUAGE => ["yml", "yaml"],
         Json(json) = tree_sitter_json::LANGUAGE => ["json", "jsonc", "mcmeta"],
         Html(html) = tree_sitter_html::LANGUAGE => ["html", "htm"],
         Sql(sql) = tree_sitter_sequel::LANGUAGE => ["sql"],
+        /// ArkTS / TypeScript（tree-sitter-typescript TSX 语法）
+        ArkTs(arkts) = tree_sitter_typescript::LANGUAGE_TSX => ["ets", "ts", "tsx"],
     }
     custom {
         Properties(properties) => ["properties", "cfg", "ini", "toml"],
@@ -109,8 +108,15 @@ impl Language {
 /// 一个 span = (byte_start, byte_end, kind)
 pub type Span = (usize, usize, TokenKind);
 
-/// 预计算源码的语法 span（供虚拟滚动逐行渲染使用）
+/// 预计算源码的语法 span（供虚拟滚动逐行渲染使用）。
+/// 病态输入防御：超大文件或超长单行会让 tree-sitter（尤其
+/// TypeScript 的错误恢复）在 UI 线程上爆炸，直接回退纯文本。
 pub fn compute_spans(source: &str, lang: Language) -> Vec<Span> {
+    const MAX_TOTAL_BYTES: usize = 512 * 1024;
+    const MAX_LINE_BYTES: usize = 16 * 1024;
+    if source.len() > MAX_TOTAL_BYTES || source.split('\n').any(|l| l.len() > MAX_LINE_BYTES) {
+        return Vec::new();
+    }
     collect_spans(source, lang)
 }
 
@@ -153,9 +159,6 @@ fn collect_treesitter_spans_checked(source: &str, lang: Language) -> (Vec<Span>,
         color_fn,
         source.as_bytes(),
     );
-    if lang == Language::Kotlin {
-        kotlin::patch_spans(&mut spans, source);
-    }
     spans.sort_by_key(|&(start, _, _)| start);
     normalize_spans(&mut spans);
     (spans, has_errors)

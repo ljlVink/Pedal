@@ -13,6 +13,25 @@ const DEBOUNCE_TEXT_LEN: usize = 100_000;
 /// debounce 等待时间（秒）
 const DEBOUNCE_SECS: f64 = 0.3;
 
+/// 搜索匹配与选中同名词的布局高亮状态。
+#[derive(Clone, Copy)]
+pub(crate) struct LayoutHighlights<'a> {
+    pub(crate) match_ranges: &'a [(usize, usize)],
+    pub(crate) current_match: Option<usize>,
+    pub(crate) word_ranges: &'a [(usize, usize)],
+    pub(crate) word_gen: u64,
+}
+
+/// 语法高亮重建的语言、主题与视窗状态。
+pub(crate) struct GalleyConfig<'a> {
+    pub(crate) lang: Language,
+    pub(crate) highlights: LayoutHighlights<'a>,
+    pub(crate) theme: &'a CodeViewTheme,
+    pub(crate) is_viewport: bool,
+    pub(crate) viewport_cursor_char: usize,
+    pub(crate) viewport_window_start: usize,
+}
+
 /// 只读视图布局缓存
 ///
 /// 文本和 span 在只读模式下不变，仅搜索状态或选中高亮变化触发重建。
@@ -67,20 +86,25 @@ impl LayoutCache {
 
     pub(crate) fn build_layouter<'a>(
         spans: &'a [Span],
-        match_ref: &'a [(usize, usize)],
-        current: Option<usize>,
-        word_ref: &'a [(usize, usize)],
-        word_gen: u64,
+        highlights: LayoutHighlights<'a>,
         theme: &'a CodeViewTheme,
         cache: &'a mut Option<Self>,
     ) -> impl FnMut(&egui::Ui, &dyn egui::TextBuffer, f32) -> Arc<egui::Galley> + 'a {
+        let LayoutHighlights {
+            match_ranges: match_ref,
+            current_match: current,
+            word_ranges: word_ref,
+            word_gen,
+        } = highlights;
         move |ui, text_buf, _wrap_width| {
             let mc = match_ref.len();
             let cm = current;
-            if let Some(c) = cache.as_ref() {
-                if c.match_count == mc && c.current_match == cm && c.galley_word_gen == word_gen {
-                    return c.galley.clone();
-                }
+            if let Some(c) = cache.as_ref()
+                && c.match_count == mc
+                && c.current_match == cm
+                && c.galley_word_gen == word_gen
+            {
+                return c.galley.clone();
             }
             let s = text_buf.as_str();
             let job =
@@ -179,10 +203,7 @@ impl EditableLayoutCache {
 
     pub(crate) fn build_layouter<'a>(
         lang: Language,
-        match_ref: &'a [(usize, usize)],
-        current: Option<usize>,
-        word_ref: &'a [(usize, usize)],
-        word_gen: u64,
+        highlights: LayoutHighlights<'a>,
         theme: &'a CodeViewTheme,
         code_font: &'a egui::FontId,
         cache: &'a mut Option<Self>,
@@ -191,37 +212,48 @@ impl EditableLayoutCache {
             let s = text_buf.as_str();
             let th = hash_text(s);
             // 大文本 debounce：编辑时用纯文本 galley（跟手），停止输入后再做完整高亮
-            if s.len() > DEBOUNCE_TEXT_LEN {
-                if let Some(c) = cache.as_mut() {
-                    let now = ui.input(|i| i.time);
-                    if c.text_hash != th {
-                        // 文本变更：立即用纯文本 LayoutJob 重排版（跳过 tree-sitter）
-                        c.text_hash = th;
-                        c.stale = true;
-                        c.last_change_time = now;
-                        let plain_color = theme.syntax.text;
-                        let job = egui::text::LayoutJob::simple(
-                            s.to_owned(),
-                            code_font.clone(),
-                            plain_color,
-                            f32::INFINITY,
-                        );
-                        let galley = ui.fonts_mut(|f| f.layout_job(job));
-                        c.galley = galley.clone();
-                        ui.ctx().request_repaint_after_secs(DEBOUNCE_SECS as f32);
-                        return galley;
-                    }
-                    if c.stale && now - c.last_change_time < DEBOUNCE_SECS {
-                        // debounce 窗口内，复用上次的纯文本 galley
-                        let remaining = DEBOUNCE_SECS - (now - c.last_change_time) + 0.016;
-                        ui.ctx().request_repaint_after_secs(remaining as f32);
-                        return c.galley.clone();
-                    }
-                    c.stale = false;
+            if s.len() > DEBOUNCE_TEXT_LEN
+                && let Some(c) = cache.as_mut()
+            {
+                let now = ui.input(|i| i.time);
+                if c.text_hash != th {
+                    // 文本变更：立即用纯文本 LayoutJob 重排版（跳过 tree-sitter）
+                    c.text_hash = th;
+                    c.stale = true;
+                    c.last_change_time = now;
+                    let plain_color = theme.syntax.text;
+                    let job = egui::text::LayoutJob::simple(
+                        s.to_owned(),
+                        code_font.clone(),
+                        plain_color,
+                        f32::INFINITY,
+                    );
+                    let galley = ui.fonts_mut(|f| f.layout_job(job));
+                    c.galley = galley.clone();
+                    ui.ctx().request_repaint_after_secs(DEBOUNCE_SECS as f32);
+                    return galley;
                 }
+                if c.stale && now - c.last_change_time < DEBOUNCE_SECS {
+                    // debounce 窗口内，复用上次的纯文本 galley
+                    let remaining = DEBOUNCE_SECS - (now - c.last_change_time) + 0.016;
+                    ui.ctx().request_repaint_after_secs(remaining as f32);
+                    return c.galley.clone();
+                }
+                c.stale = false;
             }
             rebuild_galley(
-                ui, s, th, lang, match_ref, current, word_ref, word_gen, theme, cache, false, 0, 0,
+                ui,
+                s,
+                th,
+                GalleyConfig {
+                    lang,
+                    highlights,
+                    theme,
+                    is_viewport: false,
+                    viewport_cursor_char: 0,
+                    viewport_window_start: 0,
+                },
+                cache,
             )
             .unwrap()
         }
@@ -326,8 +358,7 @@ pub(crate) fn paint_word_highlight_overlay(
     galley_pos: egui::Pos2,
     text: &str,
     word_ranges: &[(usize, usize)],
-    primary: usize,
-    secondary: usize,
+    selection: (usize, usize),
     color: egui::Color32,
 ) {
     paint_word_highlights(
@@ -336,7 +367,7 @@ pub(crate) fn paint_word_highlight_overlay(
         galley_pos,
         text,
         word_ranges,
-        selection_byte_range(text, primary, secondary),
+        selection_byte_range(text, selection.0, selection.1),
         color,
     );
 }
@@ -384,28 +415,33 @@ pub(crate) fn rebuild_galley(
     ui: &egui::Ui,
     text: &str,
     text_hash: u64,
-    lang: Language,
-    match_ranges: &[(usize, usize)],
-    current_match: Option<usize>,
-    word_ranges: &[(usize, usize)],
-    word_gen: u64,
-    theme: &CodeViewTheme,
+    config: GalleyConfig<'_>,
     cache: &mut Option<EditableLayoutCache>,
-    is_viewport: bool,
-    viewport_cursor_char: usize,
-    viewport_window_start: usize,
 ) -> Option<Arc<egui::Galley>> {
+    let GalleyConfig {
+        lang,
+        highlights,
+        theme,
+        is_viewport,
+        viewport_cursor_char,
+        viewport_window_start,
+    } = config;
+    let LayoutHighlights {
+        match_ranges,
+        current_match,
+        word_ranges,
+        word_gen,
+    } = highlights;
     let mc = match_ranges.len();
     // 缓存命中
-    if let Some(c) = cache.as_ref() {
-        if c.text_hash == text_hash
-            && !c.stale
-            && c.match_count == mc
-            && c.current_match == current_match
-            && c.galley_word_gen == word_gen
-        {
-            return Some(c.galley.clone());
-        }
+    if let Some(c) = cache.as_ref()
+        && c.text_hash == text_hash
+        && !c.stale
+        && c.match_count == mc
+        && c.current_match == current_match
+        && c.galley_word_gen == word_gen
+    {
+        return Some(c.galley.clone());
     }
     // 保留旧缓存的 word 状态（word extraction 在 show() 之后更新，不能丢失）
     let old_highlight_word = cache.as_ref().and_then(|c| c.highlight_word.clone());
@@ -416,7 +452,7 @@ pub(crate) fn rebuild_galley(
     let old_word_gen = cache.as_ref().map_or(0, |c| c.word_gen);
     // 全量重建
     let old = cache.take();
-    let text_changed = old.as_ref().map_or(true, |c| c.text_hash != text_hash);
+    let text_changed = old.as_ref().is_none_or(|c| c.text_hash != text_hash);
     let spans = if text_changed {
         highlight::compute_spans(text, lang)
     } else {

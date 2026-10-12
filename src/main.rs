@@ -1,8 +1,12 @@
-//! Pervius — Java 反编译器 + 字节码编辑器
+//! Pedal - ArkTS（HarmonyOS）反编译器 + 归档查看器
 //!
 //! @author sky
+//! @author ljlVink
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 rust_i18n::i18n!("locales", fallback = "zh-CN");
 
@@ -19,8 +23,8 @@ fn main() -> eframe::Result {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .init();
-    // 命令行参数：第一个参数为初始打开的 JAR 路径（新窗口模式使用）
-    let initial_jar = std::env::args()
+    // 命令行参数：第一个参数为初始打开的归档路径（新窗口模式使用）
+    let initial_archive = std::env::args()
         .nth(1)
         .map(std::path::PathBuf::from)
         .filter(|p| p.exists());
@@ -28,7 +32,7 @@ fn main() -> eframe::Result {
     let saved_settings = settings::Settings::load_for_locale();
     rust_i18n::set_locale(saved_settings.language.code());
     let options = appearance::ShellOptions {
-        title: "Pervius".to_owned(),
+        title: "Pedal".to_owned(),
         size: [1280.0, 800.0],
         theme: appearance::ShellTheme {
             bg: appearance::theme::BG_DARK,
@@ -48,7 +52,7 @@ fn main() -> eframe::Result {
     };
     appearance::run(options, move |_cc| {
         let mut app = App::new();
-        if let Some(ref path) = initial_jar {
+        if let Some(path) = &initial_archive {
             app.open_jar(path);
         }
         Box::new(PervApp { app })

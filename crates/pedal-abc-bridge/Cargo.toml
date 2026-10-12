@@ -1,0 +1,7 @@
+[package]
+name = "pedal-abc-bridge"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }

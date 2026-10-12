@@ -159,7 +159,7 @@ tabookit::class! {
     fn paint_separator(ui: &egui::Ui, x: f32, y: f32, color: egui::Color32) {
         ui.painter().line_segment(
             [egui::pos2(x, y - SEP_HALF_H), egui::pos2(x, y + SEP_HALF_H)],
-            egui::Stroke::new(1.0, color),
+            egui::Stroke::new(1.0_f32, color),
         );
     }
 }

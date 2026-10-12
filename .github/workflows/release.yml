@@ -15,14 +15,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: pervius.exe
-            asset_name: pervius-windows-x86_64.exe
+            artifact_name: pedal.exe
+            asset_name: pedal-windows-x86_64.exe
           - os: ubuntu-latest
-            artifact_name: pervius
-            asset_name: pervius-linux-x86_64
+            artifact_name: pedal
+            asset_name: pedal-linux-x86_64
           - os: macos-latest
-            artifact_name: pervius
-            asset_name: pervius-macos-aarch64.zip
+            artifact_name: pedal
+            asset_name: pedal-macos-aarch64.zip
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -65,35 +65,35 @@ jobs:
           sips -s format png -z 256 256 crates/egui-shell/icon.png --out icon.iconset/icon_256x256.png
           sips -s format png -z 128 128 crates/egui-shell/icon.png --out icon.iconset/icon_128x128@2x.png
           sips -s format png -z 128 128 crates/egui-shell/icon.png --out icon.iconset/icon_128x128.png
-          iconutil -c icns icon.iconset -o Pervius.icns
+          iconutil -c icns icon.iconset -o Pedal.icns
 
           # Build .app bundle
-          mkdir -p Pervius.app/Contents/{MacOS,Resources}
-          cp target/release/${{ matrix.artifact_name }} Pervius.app/Contents/MacOS/pervius
-          chmod +x Pervius.app/Contents/MacOS/pervius
-          cp Pervius.icns Pervius.app/Contents/Resources/Pervius.icns
+          mkdir -p Pedal.app/Contents/{MacOS,Resources}
+          cp target/release/${{ matrix.artifact_name }} Pedal.app/Contents/MacOS/pedal
+          chmod +x Pedal.app/Contents/MacOS/pedal
+          cp Pedal.icns Pedal.app/Contents/Resources/Pedal.icns
 
-          cat > Pervius.app/Contents/Info.plist <<'EOF'
+          cat > Pedal.app/Contents/Info.plist <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>CFBundleExecutable</key>
-            <string>pervius</string>
+            <string>pedal</string>
             <key>CFBundleIdentifier</key>
-            <string>com.pervius.app</string>
+            <string>com.pedal.app</string>
             <key>CFBundleName</key>
-            <string>Pervius</string>
+            <string>Pedal</string>
             <key>CFBundleDisplayName</key>
-            <string>Pervius</string>
+            <string>Pedal</string>
             <key>CFBundleVersion</key>
-            <string>0.2.1</string>
+            <string>0.0.1</string>
             <key>CFBundleShortVersionString</key>
-            <string>0.2.1</string>
+            <string>0.0.1</string>
             <key>CFBundlePackageType</key>
             <string>APPL</string>
             <key>CFBundleIconFile</key>
-            <string>Pervius</string>
+            <string>Pedal.icns</string>
             <key>CFBundleInfoDictionaryVersion</key>
             <string>6.0</string>
             <key>NSHighResolutionCapable</key>
@@ -102,13 +102,13 @@ jobs:
           </plist>
           EOF
 
-          codesign --deep --force --sign - --options runtime Pervius.app
+          codesign --deep --force --sign - --options runtime Pedal.app
 
       - name: Rename artifact
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "macOS" ]; then
-            ditto -c -k --sequesterRsrc --keepParent Pervius.app ${{ matrix.asset_name }}
+            ditto -c -k --sequesterRsrc --keepParent Pedal.app ${{ matrix.asset_name }}
           else
             cp target/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
           fi
@@ -121,16 +121,16 @@ jobs:
 
             | Platform | File |
             |----------|------|
-            | Windows | `pervius-windows-x86_64.exe` |
-            | Linux | `pervius-linux-x86_64` |
-            | macOS | `pervius-macos-aarch64.zip` |
+            | Windows | `pedal-windows-x86_64.exe` |
+            | Linux | `pedal-linux-x86_64` |
+            | macOS | `pedal-macos-aarch64.zip` |
 
             ### macOS 首次运行
 
             macOS Gatekeeper 会拦截未公证的应用，首次打开请执行：
 
             ```bash
-            xattr -cr Pervius.app
+            xattr -cr Pedal.app
             ```
           files: ${{ matrix.asset_name }}
         if: matrix.os == 'windows-latest'

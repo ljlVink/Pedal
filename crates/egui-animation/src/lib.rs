@@ -9,6 +9,7 @@
 //! ```
 //!
 //! @author sky
+//! @author ljlVink
 
 use egui::{Color32, Context, Id, Ui, Vec2};
 use std::hash::Hash;
@@ -95,7 +96,7 @@ impl Anim {
     /// - `hovered`（且未选中）→ `hover_color`
     /// - 否则 → `Color32::TRANSPARENT`
     ///
-    /// `clicked` 用于点击帧立即使用选中色，避免 hover → transparent → selected 的闪烁——
+    /// `clicked` 用于点击帧立即使用选中色，避免 hover → transparent → selected 的闪烁--
     /// 因为选中状态通常在下一帧才由父级更新，中间会经过一帧透明。
     pub fn select_bg(
         &self,

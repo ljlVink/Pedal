@@ -1,22 +1,20 @@
 //! 主布局：UI 状态 + 渲染
 //!
 //! @author sky
+//! @author ljlVink
 
-use crate::app::navigate::ClassResolver;
-use crate::app::workspace::{DecompilePhase, LoadedState, Workspace};
-use crate::app::{App, CacheDeleteResult, ConfirmAction};
+use crate::app::workspace::{LoadedState, Workspace};
+use crate::app::{App, ConfirmAction};
 use crate::appearance::theme;
-use crate::settings::{self, Settings, SettingsAction, SettingsPanelState};
-use crate::task::{Poll, Pollable, Task};
+use crate::settings::{self, Settings};
 use eframe::egui;
 use egui_keybind::KeyMap;
 use egui_shell::components::{SettingsFile, SettingsPanel};
-use pervius_java_bridge::{decompiler, environment, process};
 use rust_i18n::t;
 use std::sync::atomic::Ordering;
 
 use super::editor::EditorArea;
-use super::explorer::{ClasspathAction, FileAction, FilePanel, tree};
+use super::explorer::{FileAction, FilePanel, tree};
 use super::search::SearchDialog;
 use super::status_bar::StatusBar;
 
@@ -43,8 +41,6 @@ tabookit::class! {
         pub search: SearchDialog,
         /// 设置面板
         pub settings_panel: SettingsPanel<Settings>,
-        /// 设置面板附加状态
-        pub settings_state: SettingsPanelState,
         /// 快捷键映射
         keys: KeyMap<App>,
         /// Explorer 面板当前宽度（可拖拽调整）
@@ -53,23 +49,23 @@ tabookit::class! {
         pub explorer_visible: bool,
         /// FPS 叠加层开关（F12）
         show_fps: bool,
+        /// 关于对话框是否打开
+        pub about_open: bool,
     }
 
     pub fn new(settings: &Settings) -> Self {
         let keys = super::keybindings::build_keymap(&settings.keymap);
-        let mut settings_state = SettingsPanelState::default();
-        settings::refresh_cache_state(&mut settings_state);
         Self {
             file_panel: FilePanel::new(),
             editor: EditorArea::new(),
             status_bar: StatusBar::default(),
             search: SearchDialog::new(),
             settings_panel: settings::new_panel(),
-            settings_state,
             keys,
             explorer_width: theme::FILE_PANEL_WIDTH,
             explorer_visible: false,
             show_fps: false,
+            about_open: false,
         }
     }
 }
@@ -83,7 +79,6 @@ impl App {
         self.handle_dropped_files(ui.ctx());
         self.handle_pending_open();
         self.handle_pending_reveal();
-        self.handle_pending_navigation();
         self.poll_tasks();
         self.dispatch_keybinds(ui.ctx());
         self.render_panels(ui);
@@ -100,17 +95,14 @@ impl App {
 
     /// 轮询所有后台任务
     fn poll_tasks(&mut self) {
-        self.poll_vineflower_prepare();
         self.check_loading();
-        let loading = matches!(self.workspace, Workspace::Loading(_));
+        self.check_ark_loading();
+        let loading = matches!(
+            self.workspace,
+            Workspace::Loading(_) | Workspace::ArkLoading(_)
+        );
         if !loading {
-            self.poll_jar_decompile();
-            self.poll_redecompile();
-            self.poll_class_decompiles();
-            self.poll_class_compiles();
-            self.poll_cache_delete();
             self.poll_export_jar();
-            self.poll_search_index();
             self.rebuild_search_index();
         }
     }
@@ -152,41 +144,27 @@ impl App {
     fn render_overlays(&mut self, ui: &mut egui::Ui, shell_theme: &egui_shell::ShellTheme) {
         let search_index = self.workspace.loaded().and_then(|s| s.search_index.clone());
         let has_jar = self.workspace.is_loaded();
-        let index_building = self
-            .workspace
-            .loaded()
-            .is_some_and(|s| s.search_index_task.is_some());
-        self.layout
-            .search
-            .sync_state(search_index, has_jar, index_building);
+        self.layout.search.sync_state(search_index, has_jar, false);
         self.layout.search.render(ui.ctx(), shell_theme);
-        if let Some(req) = self.layout.search.take_pending_open() {
-            if !self
+        if let Some(req) = self.layout.search.take_pending_open()
+            && !self
                 .layout
                 .editor
                 .focus_tab_at(&req.entry_path, Some(req.line))
-            {
-                let path = req.entry_path.clone();
-                self.layout.file_panel.pending_open = Some(req.entry_path);
-                self.handle_pending_open();
-                // 新开的 tab 也需要设置滚动目标
-                self.layout.editor.focus_tab_at(&path, Some(req.line));
-            }
+        {
+            let path = req.entry_path.clone();
+            self.layout.file_panel.pending_open = Some(req.entry_path);
+            self.handle_pending_open();
+            // 新开的 tab 也需要设置滚动目标
+            self.layout.editor.focus_tab_at(&path, Some(req.line));
         }
-        let output = settings::show(
-            &mut self.layout.settings_panel,
-            &mut self.layout.settings_state,
-            ui.ctx(),
-            shell_theme,
-        );
+        let output = settings::show(&mut self.layout.settings_panel, ui.ctx(), shell_theme);
         if let Some(new_settings) = output.settings {
             self.apply_settings(new_settings);
             ui.ctx().request_repaint();
         }
-        if let Some(action) = output.action {
-            self.handle_settings_action(action);
-        }
         self.toasts.show(ui.ctx());
+        self.render_about(ui.ctx());
         if ui.input(|i| i.key_pressed(egui::Key::F12)) {
             self.layout.show_fps = !self.layout.show_fps;
         }
@@ -196,198 +174,57 @@ impl App {
         self.render_confirm(ui.ctx());
     }
 
+    /// 关于对话框
+    fn render_about(&mut self, ctx: &egui::Context) {
+        if !self.layout.about_open {
+            return;
+        }
+        let screen = ctx.content_rect();
+        let size = egui::vec2(400.0, 250.0);
+        let pos = (screen.center() - size / 2.0).max(screen.left_top());
+        let mut open = true;
+        let mut close_clicked = false;
+        egui::Window::new(t!("menu.about"))
+            .resizable(false)
+            .collapsible(false)
+            .default_pos(pos)
+            .fixed_size(size)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.add_space(6.0);
+                ui.heading("Pedal");
+                ui.label(format!("version {}", env!("CARGO_PKG_VERSION")));
+                ui.add_space(8.0);
+                ui.label(t!("about.description"));
+                ui.add_space(8.0);
+                ui.label(t!("about.license"));
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
+                    if ui.button(t!("about.close")).clicked() {
+                        close_clicked = true;
+                    }
+                });
+            });
+        self.layout.about_open = open && !close_clicked;
+    }
+
     /// 应用新设置（keybind / 语言 / 持久化）
     fn apply_settings(&mut self, new_settings: Settings) {
         self.layout.keys = super::keybindings::build_keymap(&new_settings.keymap);
         if new_settings.language != self.settings.language {
             rust_i18n::set_locale(new_settings.language.code());
         }
-        if new_settings.java.java_home != self.settings.java.java_home {
-            process::set_java_home(&new_settings.java.java_home);
-        }
-        let cache_changed = new_settings.cache.decompiled_dir != self.settings.cache.decompiled_dir;
-        let vineflower_changed = new_settings.java.vineflower_version
-            != self.settings.java.vineflower_version
-            || new_settings.java.vineflower_dir != self.settings.java.vineflower_dir;
-        let kotlin_settings_changed = new_settings.java.kotlin_version
-            != self.settings.java.kotlin_version
-            || new_settings.java.kotlin_dependencies_dir
-                != self.settings.java.kotlin_dependencies_dir;
-        let environment_changed = vineflower_changed || kotlin_settings_changed;
-        let kotlin_decompiler_changed =
-            new_settings.compile.kotlin_decompiler != self.settings.compile.kotlin_decompiler;
-        let refresh_cache_settings = cache_changed || kotlin_decompiler_changed;
-        let should_prepare_vineflower = vineflower_changed
-            || (cache_changed && new_settings.java.vineflower_dir.trim().is_empty());
-        if cache_changed {
-            decompiler::set_cache_root(new_settings.cache.root_path());
-        }
-        if kotlin_decompiler_changed {
-            self.apply_kotlin_decompiler_settings(&new_settings);
-        }
-        if environment_changed || cache_changed {
-            environment::set_environment_config(new_settings.java.environment_config());
-        }
-        if should_prepare_vineflower {
-            self.layout.status_bar = StatusBar::default();
-        }
         self.settings = new_settings;
         if let Err(e) = self.settings.save() {
             log::warn!("配置保存失败: {e}");
         }
-        if refresh_cache_settings {
-            settings::refresh_cache_state(&mut self.layout.settings_state);
-            self.sync_cache_state();
-        }
-        if should_prepare_vineflower {
-            self.start_vineflower_prepare();
-        }
-    }
-
-    fn apply_kotlin_decompiler_settings(&mut self, new_settings: &Settings) {
-        decompiler::set_kotlin_decompiler_mode(new_settings.compile.kotlin_decompiler.to_bridge());
-        self.pending_decompiles.clear();
-        let Some(loaded) = self.workspace.loaded_mut() else {
-            return;
-        };
-        loaded.pending_re_decompile = None;
-        if matches!(loaded.decompile, DecompilePhase::Running { .. }) {
-            loaded.decompile = DecompilePhase::Pending;
-        }
-    }
-
-    fn start_vineflower_prepare(&mut self) {
-        self.pending_vineflower_prepare = Some(Task::spawn(environment::ensure_vineflower));
-    }
-
-    fn poll_vineflower_prepare(&mut self) {
-        let Some(task) = &self.pending_vineflower_prepare else {
-            return;
-        };
-        let result = match task.poll() {
-            Poll::Ready(result) => result,
-            Poll::Pending => return,
-            Poll::Lost => {
-                self.pending_vineflower_prepare = None;
-                self.toasts
-                    .error(t!("layout.vineflower_prepare_task_failed"));
-                return;
-            }
-        };
-        self.pending_vineflower_prepare = None;
-        match result {
-            Ok(path) => {
-                self.layout.status_bar = StatusBar::default();
-                self.toasts.info(t!(
-                    "layout.vineflower_prepare_complete",
-                    path = path.display().to_string()
-                ));
-            }
-            Err(error) => {
-                self.toasts.error(t!(
-                    "layout.vineflower_prepare_failed",
-                    error = error.to_string()
-                ));
-            }
-        }
-    }
-
-    fn handle_settings_action(&mut self, action: SettingsAction) {
-        if self.pending_cache_delete.is_some() {
-            return;
-        }
-        match action {
-            SettingsAction::DeleteCache { dir, label } => {
-                self.layout.settings_state.cache_busy = true;
-                self.pending_cache_delete = Some(Task::spawn(move || {
-                    let deleted = decompiler::clear_cache_entry_dir(&dir);
-                    CacheDeleteResult::Single { label, deleted }
-                }));
-            }
-            SettingsAction::DeleteAllCaches { count } => {
-                self.layout.settings_state.cache_busy = true;
-                self.pending_cache_delete = Some(Task::spawn(move || {
-                    decompiler::clear_all_cache();
-                    CacheDeleteResult::All { count }
-                }));
-            }
-        }
-    }
-
-    fn poll_cache_delete(&mut self) {
-        let Some(task) = &self.pending_cache_delete else {
-            return;
-        };
-        let result = match task.poll() {
-            Poll::Ready(result) => result,
-            Poll::Pending => return,
-            Poll::Lost => {
-                self.pending_cache_delete = None;
-                self.layout.settings_state.cache_busy = false;
-                self.toasts.error(t!("layout.cache_delete_task_failed"));
-                return;
-            }
-        };
-        self.pending_cache_delete = None;
-        self.layout.settings_state.cache_busy = false;
-        settings::refresh_cache_state(&mut self.layout.settings_state);
-        match result {
-            CacheDeleteResult::Single { label, deleted } => {
-                if deleted {
-                    self.toasts
-                        .info(t!("layout.cache_deleted", name = label.as_str()));
-                    self.sync_cache_state();
-                } else {
-                    self.toasts
-                        .error(t!("layout.cache_delete_failed", name = label.as_str()));
-                }
-            }
-            CacheDeleteResult::All { count } => {
-                self.toasts
-                    .info(t!("layout.cache_deleted_all", count = count));
-                self.sync_cache_state();
-            }
-        }
-    }
-
-    fn sync_cache_state(&mut self) {
-        let Some(current_hash) = self.workspace.jar().map(|jar| jar.hash.clone()) else {
-            return;
-        };
-        let has_cache = decompiler::is_cached(&current_hash);
-        let modified_entries = self
-            .workspace
-            .jar()
-            .map(|jar| jar.modified_paths().map(|path| path.to_string()).collect())
-            .unwrap_or_default();
-        let Some(loaded) = self.workspace.loaded_mut() else {
-            return;
-        };
-        loaded.search_index = None;
-        loaded.search_index_task = None;
-        loaded.search_index_progress = None;
-        loaded.search_index_total = 0;
-        if !has_cache {
-            loaded.decompile = DecompilePhase::Pending;
-            loaded.pending_re_decompile = None;
-            self.layout
-                .editor
-                .refresh_class_tabs(None, &modified_entries);
-            return;
-        }
-        loaded.decompile = DecompilePhase::Done;
-        loaded.pending_re_decompile = None;
-        self.layout
-            .editor
-            .refresh_class_tabs(Some(&current_hash), &modified_entries);
     }
 
     /// 收集 egui_dock 渲染期间产生的 blocked_close 事件
     fn collect_blocked_close(&mut self) {
-        if let Some(action) = self.layout.editor.blocked_close.take() {
-            if self.pending_confirm.is_none() {
-                self.pending_confirm = Some(ConfirmAction::TabClose(action));
-            }
+        if let Some(action) = self.layout.editor.blocked_close.take()
+            && self.pending_confirm.is_none()
+        {
+            self.pending_confirm = Some(ConfirmAction::TabClose(action));
         }
     }
 
@@ -419,34 +256,16 @@ impl App {
     fn render_explorer(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         egui_shell::components::widget::island::paint(ui, rect, &theme::ISLAND);
         let (tab_modified, jar_modified) = self.split_modified_entries();
-        let decompiled = self
-            .workspace
-            .loaded()
-            .and_then(|s| s.decompile.decompiled_set());
-        let current_jar = self.workspace.jar().map(|jar| jar.path.clone());
-        let project_classpath = self
-            .workspace
-            .loaded()
-            .map(|s| s.compile_classpath_entries.clone())
-            .unwrap_or_default();
-        let global_classpath = self.settings.compile.classpath_entries.clone();
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .id(egui::Id::new("explorer_island"))
                 .max_rect(rect),
         );
         child.set_clip_rect(rect);
-        self.layout.file_panel.render(
-            &mut child,
-            &tab_modified,
-            &jar_modified,
-            decompiled,
-            current_jar.as_deref(),
-            &project_classpath,
-            &global_classpath,
-        );
+        self.layout
+            .file_panel
+            .render(&mut child, &tab_modified, &jar_modified);
         self.handle_file_panel_action();
-        self.handle_classpath_panel_action();
         egui_shell::components::widget::island::paint_corner_mask(ui, rect, &theme::ISLAND);
     }
 
@@ -475,7 +294,6 @@ impl App {
             self.toasts.error(t!("layout.entry_not_found", path = path));
             return;
         };
-        self.pending_decompiles.retain(|(entry, _)| entry != &path);
         self.layout.editor.close_entry_tab(&path);
         if self.layout.file_panel.selected.as_deref() == Some(&path) {
             self.layout.file_panel.selected = None;
@@ -508,8 +326,6 @@ impl App {
                 .error(t!("layout.entry_rename_failed", path = old_path));
             return;
         };
-        self.pending_decompiles
-            .retain(|(entry, _)| entry != &old_path);
         self.layout.editor.rename_entry_tab(&old_path, &new_path);
         if self.layout.file_panel.selected.as_deref() == Some(&old_path) {
             self.layout.file_panel.selected = Some(new_path.clone());
@@ -553,46 +369,15 @@ impl App {
             .set_roots(tree::build_tree(jar_name, &path_refs));
     }
 
-    fn handle_classpath_panel_action(&mut self) {
-        let Some(action) = self.layout.file_panel.take_classpath_action() else {
-            return;
-        };
-        match action {
-            ClasspathAction::AddProject => self.add_classpath_dialog(),
-            ClasspathAction::RevealPath(path) => self.reveal_filesystem_path(&path),
-            ClasspathAction::RemoveProject(path) => {
-                if let Some(loaded) = self.workspace.loaded_mut() {
-                    let before = loaded.compile_classpath_entries.len();
-                    loaded
-                        .compile_classpath_entries
-                        .retain(|entry| entry != &path);
-                    if loaded.compile_classpath_entries.len() != before {
-                        self.toasts
-                            .info(t!("layout.classpath_removed", path = path.display()));
-                    }
-                }
-            }
-            ClasspathAction::RemoveGlobal(entry) => {
-                let before = self.settings.compile.classpath_entries.len();
-                self.settings
-                    .compile
-                    .classpath_entries
-                    .retain(|path| path != &entry);
-                if self.settings.compile.classpath_entries.len() != before {
-                    if let Err(e) = self.settings.save() {
-                        log::warn!("保存全局 classpath 失败: {e}");
-                    }
-                    self.toasts
-                        .info(t!("layout.classpath_removed", path = entry));
-                }
-            }
-        }
-    }
-
     /// 渲染 editor 面板
     fn render_editor(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         egui_shell::components::widget::island::paint(ui, rect, &theme::ISLAND);
         if let Workspace::Loading(loading) = &self.workspace {
+            let current = loading.progress.current.load(Ordering::Relaxed);
+            let total = loading.progress.total.load(Ordering::Relaxed);
+            paint_loading(ui, rect, &loading.name, current, total);
+            ui.ctx().request_repaint();
+        } else if let Workspace::ArkLoading(loading) = &self.workspace {
             let current = loading.progress.current.load(Ordering::Relaxed);
             let total = loading.progress.total.load(Ordering::Relaxed);
             paint_loading(ui, rect, &loading.name, current, total);
@@ -603,11 +388,6 @@ impl App {
                 .jar()
                 .map(|j| j.modified_paths().map(|s| s.to_string()).collect())
                 .unwrap_or_default();
-            let known_classes = self
-                .workspace
-                .loaded()
-                .map(|s| s.class_resolver.known_names().clone())
-                .unwrap_or_default();
             self.layout.editor.render(
                 &mut ui.new_child(
                     egui::UiBuilder::new()
@@ -615,13 +395,24 @@ impl App {
                         .max_rect(rect),
                 ),
                 &jar_modified,
-                &known_classes,
             );
-            if let Some(entry) = self.layout.editor.pending_recompile.take() {
-                self.compile_source_tab(&entry);
+            if let Some(entry) = self.layout.editor.pending_disasm.take() {
+                self.generate_ark_disasm(&entry);
             }
         }
         egui_shell::components::widget::island::paint_corner_mask(ui, rect, &theme::ISLAND);
+    }
+
+    /// 懒生成 ArkTS record 的反汇编文本并填充到对应 tab
+    fn generate_ark_disasm(&mut self, entry_path: &str) {
+        let text = self
+            .workspace
+            .loaded_mut()
+            .and_then(|s| s.ark.as_mut())
+            .and_then(|ark| ark.build_disasm_entry(entry_path));
+        if let Some(text) = text {
+            self.layout.editor.set_tab_disasm(entry_path, text);
+        }
     }
 
     /// 在 explorer 和 editor 之间的 gap 区域绘制可拖拽的 resize 手柄
@@ -655,10 +446,10 @@ impl App {
         if let Some(v) = self.layout.status_bar.take_view_change() {
             self.layout.editor.set_focused_view(v);
         }
-        if let Some(path) = self.layout.status_bar.take_clicked_file() {
-            if !self.layout.editor.focus_tab(&path) {
-                self.layout.file_panel.pending_open = Some(path);
-            }
+        if let Some(path) = self.layout.status_bar.take_clicked_file()
+            && !self.layout.editor.focus_tab(&path)
+        {
+            self.layout.file_panel.pending_open = Some(path);
         }
     }
 
@@ -668,10 +459,10 @@ impl App {
         let frame = ctx.cumulative_frame_nr();
         let cache_id = anim_id.with("frame_cache");
         let cached: Option<(u64, f32)> = ctx.data(|d| d.get_temp(cache_id));
-        if let Some((f, t)) = cached {
-            if f == frame {
-                return t;
-            }
+        if let Some((f, t)) = cached
+            && f == frame
+        {
+            return t;
         }
         let t = ctx.animate_bool_with_time(anim_id, visible, theme::EXPLORER_ANIM_DURATION);
         ctx.data_mut(|d| d.insert_temp::<(u64, f32)>(cache_id, (frame, t)));
@@ -682,16 +473,11 @@ impl App {
 /// 条目路径变化后刷新依赖路径列表的索引。
 fn refresh_loaded_entry_indexes(loaded: &mut LoadedState) -> Vec<String> {
     let paths: Vec<String> = loaded.jar.paths().into_iter().map(str::to_string).collect();
-    let path_refs: Vec<&str> = paths.iter().map(String::as_str).collect();
-    loaded.class_resolver = ClassResolver::build(&path_refs);
     loaded.search_index = None;
-    loaded.search_index_task = None;
-    loaded.search_index_progress = None;
-    loaded.search_index_total = 0;
     paths
 }
 
-/// 将用户输入规范化为 JAR 条目路径。
+/// 将用户输入规范化为归档条目路径。
 fn normalize_entry_path(input: &str) -> Option<String> {
     let path = input.trim().replace('\\', "/");
     let path = path.trim_start_matches('/').to_string();
@@ -740,7 +526,7 @@ fn compute_rects(total: egui::Rect, explorer_width: f32, explorer_visible: bool)
     }
 }
 
-/// 绘制 JAR 加载进度
+/// 绘制归档加载进度
 fn paint_loading(ui: &egui::Ui, rect: egui::Rect, name: &str, current: u32, total: u32) {
     let frac = if total > 0 {
         current as f32 / total as f32

@@ -10,7 +10,7 @@ use std::collections::HashSet;
 
 pub use build::build_tree;
 pub use node::TreeNode;
-pub use render::render_tree;
+pub use render::{TreeActions, TreeRenderConfig, render_tree};
 
 /// 展开到指定路径的节点（沿途展开所有祖先），返回是否找到
 pub fn reveal(nodes: &mut [TreeNode], target: &str) -> bool {
@@ -35,10 +35,10 @@ pub fn expand_one_level(nodes: &mut [TreeNode]) {
 
 /// 折叠一层：找到最深的展开叶层级，折叠该层（保留根节点）
 pub fn collapse_one_level(nodes: &mut [TreeNode]) {
-    if let Some(depth) = max_expanded_leaf_depth(nodes, 0) {
-        if depth > 0 {
-            set_expanded_at(nodes, depth, 0, false);
-        }
+    if let Some(depth) = max_expanded_leaf_depth(nodes, 0)
+        && depth > 0
+    {
+        set_expanded_at(nodes, depth, 0, false);
     }
 }
 

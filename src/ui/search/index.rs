@@ -3,12 +3,10 @@
 //! 索引在后台线程构建，搜索在后台线程执行，UI 线程零阻塞。
 //!
 //! @author sky
+//! @author ljlVink
 
-use pervius_java_bridge::decompiler;
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
 /// 搜索结果上限
@@ -32,16 +30,6 @@ pub struct IndexEntry {
     pub source: String,
 }
 
-/// 索引构建请求（在 UI 线程提取，传给后台线程）
-pub struct IndexBuildRequest {
-    /// JAR 的 SHA-256 哈希
-    pub hash: String,
-    /// 所有 .class 条目路径
-    pub class_paths: Vec<String>,
-    /// 已修改条目的内存反编译缓存（预先 clone）
-    pub modified_sources: HashMap<String, String>,
-}
-
 /// 增量搜索消息（后台线程 → UI 线程）
 pub enum SearchMessage {
     /// 一个类的搜索结果
@@ -60,79 +48,17 @@ pub struct SearchDone {
     pub files_matched: usize,
 }
 
-/// 从 entry_path 提取 class_name 和 package
-fn split_class_path(path: &str) -> (String, String) {
-    let base = path.strip_suffix(".class").unwrap_or(path);
+/// 从 entry_path 提取显示名与包路径（去掉 `.ets` / `.class` 等已知后缀）
+pub fn split_class_path(path: &str) -> (String, String) {
+    let base = path
+        .strip_suffix(".class")
+        .or_else(|| path.strip_suffix(".ets"))
+        .unwrap_or(path);
     if let Some(idx) = base.rfind('/') {
-        let class_name = &base[idx + 1..];
-        let package = base[..idx].replace('/', ".");
-        (class_name.to_string(), package)
+        (base[idx + 1..].to_string(), base[..idx].replace('/', "."))
     } else {
         (base.to_string(), String::new())
     }
-}
-
-/// 判断路径是否为内部类
-///
-/// 文件名含 `$` 且在第一个 `$` 处截断后对应的外部类文件存在于 JAR 中。
-/// 如 `com/a/Outer$Inner.class` 的外部类为 `com/a/Outer.class`。
-fn is_inner_class(path: &str, class_set: &HashSet<&str>) -> bool {
-    let base = path.strip_suffix(".class").unwrap_or(path);
-    let file_name = base.rsplit('/').next().unwrap_or(base);
-    if !file_name.contains('$') {
-        return false;
-    }
-    let prefix_len = base.len() - file_name.len();
-    let dollar_pos = file_name.find('$').unwrap();
-    let mut outer = String::with_capacity(prefix_len + dollar_pos + 6);
-    outer.push_str(&base[..prefix_len + dollar_pos]);
-    outer.push_str(".class");
-    class_set.contains(outer.as_str())
-}
-
-/// 构建搜索索引（在后台线程执行）
-///
-/// 遍历所有 .class 条目，从磁盘缓存或内存缓存读取反编译源码。
-/// `progress` 原子计数器每处理一个条目递增一次。
-pub fn build_index(req: IndexBuildRequest, progress: &Arc<AtomicU32>) -> SearchIndex {
-    let mut entries = Vec::new();
-    // 收集所有 class 路径，用于判断内部类
-    let class_set: HashSet<&str> = req.class_paths.iter().map(|s| s.as_str()).collect();
-    for path in &req.class_paths {
-        if !path.ends_with(".class") {
-            continue;
-        }
-        // 跳过内部类：文件名含 '$' 且对应的外部类文件存在于 JAR 中
-        if is_inner_class(path, &class_set) {
-            progress.fetch_add(1, Ordering::Relaxed);
-            continue;
-        }
-        // 跳过内部类（文件名含 '$'），其源码已包含在外部类中
-        if path
-            .rsplit('/')
-            .next()
-            .is_some_and(|name| name.contains('$'))
-        {
-            progress.fetch_add(1, Ordering::Relaxed);
-            continue;
-        }
-        let source = if let Some(src) = req.modified_sources.get(path) {
-            Some(src.clone())
-        } else {
-            decompiler::cached_source(&req.hash, path).map(|c| c.source)
-        };
-        if let Some(source) = source {
-            let (class_name, package) = split_class_path(path);
-            entries.push(IndexEntry {
-                entry_path: path.clone(),
-                class_name,
-                package,
-                source,
-            });
-        }
-        progress.fetch_add(1, Ordering::Relaxed);
-    }
-    SearchIndex { entries }
 }
 
 /// 执行增量搜索（在后台线程执行）

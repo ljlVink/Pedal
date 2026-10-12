@@ -8,9 +8,9 @@
 
 | 模块 | 说明 |
 |---|---|
-| `highlight` | 基于 tree-sitter 的语法高亮引擎，支持 10 种语言（Java、Kotlin、XML、YAML、JSON、HTML、SQL、Bytecode、Properties、Plain），并补齐 Kotlin/JVM `$` 与反引号特殊方法名高亮 |
-| `code_view` | 代码视图渲染 — 行号栏、语法高亮文本、搜索匹配绘制，支持只读和可编辑模式 |
-| `search` | 搜索算法 — 纯文本 / 正则 / 全词匹配 / 大小写敏感，以及十六进制字节搜索；全词匹配会将 `$` 视作 JVM 名称字符 |
+| `highlight` | 基于 tree-sitter 的语法高亮引擎，支持 9 种语言（ArkTS/TypeScript、XML、YAML、JSON、HTML、SQL、Bytecode、Properties、Plain） |
+| `code_view` | 代码视图渲染 - 行号栏、语法高亮文本、搜索匹配绘制，支持只读和可编辑模式 |
+| `search` | 搜索算法 - 纯文本 / 正则 / 全词匹配 / 大小写敏感，以及十六进制字节搜索；全词匹配会将 `$` 视作 JVM 名称字符 |
 | `find_bar` | 浮动查找栏 overlay 组件，支持匹配导航和模式切换 |
 | `theme` | 主题结构体（`SyntaxTheme`、`CodeViewTheme`、`FindBarTheme`），完整的配色 / 图标 / 标签参数化 |
 
@@ -48,15 +48,28 @@ pub fn editor_theme() -> egui_editor::CodeViewTheme {
 // src/ui/editor/render.rs
 pub fn render_decompiled(ui: &mut egui::Ui, tab: &mut EditorTab, matches: &[FindMatch], current: Option<usize>) {
     let t = theme::editor_theme();
-    egui_editor::code_view::code_view(
+    let line_mapping: &[Option<u32>] = &[];
+    let output = egui_editor::code_view::code_view(
         ui,
         &tab.decompiled,
         &tab.decompiled_data.spans,
-        &tab.decompiled_line_mapping,
-        matches,
-        current,
-        &t,
+        line_mapping,
+        egui_editor::code_view::CodeViewConfig {
+            matches,
+            current,
+            ..egui_editor::code_view::CodeViewConfig::new(
+                egui::Id::new(&tab.entry_path).with("decompiled"),
+                &t,
+            )
+        },
+        &mut tab.layout_cache,
+        &mut tab.pending_scroll_to_line,
     );
+    // value 是可选的导航命中；response 是 TextEdit 的响应，可用于上下文菜单等交互。
+    if let Some(navigation_hit) = output.value { /* 处理导航 */ }
+    if let Some(response) = output.response.as_ref() {
+        response.context_menu(|ui| { /* ... */ });
+    }
 }
 ```
 
@@ -68,17 +81,29 @@ pub fn render_decompiled(ui: &mut egui::Ui, tab: &mut EditorTab, matches: &[Find
 // src/ui/editor/render.rs
 pub fn render_editable(ui: &mut egui::Ui, tab: &mut EditorTab, matches: &[FindMatch], current: Option<usize>) {
     let t = theme::editor_theme();
-    let changed = egui_editor::code_view::code_view_editable(
+    let output = egui_editor::code_view::code_view_editable(
         ui,
         &mut tab.decompiled,
-        tab.language,
-        matches,
-        current,
-        &t,
+        egui_editor::code_view::CodeViewConfig {
+            lang: tab.language,
+            matches,
+            current,
+            viewport_override: tab.viewport_override,
+            ..egui_editor::code_view::CodeViewConfig::new(
+                egui::Id::new(&tab.entry_path).with("editable"),
+                &t,
+            )
+        },
+        &mut tab.editable_layout_cache,
+        &mut tab.pending_scroll_to_line,
     );
-    if changed {
+    if output.value {
         tab.refresh_decompiled_data();
         tab.is_modified = true;
+    }
+    // response 在普通布局模式下提供 TextEdit 响应；大文本视窗模式会返回 None。
+    if let Some(response) = output.response.as_ref() {
+        response.context_menu(|ui| { /* ... */ });
     }
 }
 ```
@@ -88,23 +113,39 @@ pub fn render_editable(ui: &mut egui::Ui, tab: &mut EditorTab, matches: &[FindMa
 结构化面板中嵌入 `code_view_editable`，与反编译视图共享行号、搜索高亮、边缘滚动等能力：
 
 ```rust
-// src/ui/editor/bytecode_panel.rs — 方法字节码代码块
+// src/ui/editor/bytecode_panel.rs - 方法字节码代码块
 if method.has_code {
     let t = theme::editor_theme();
-    changed |= egui_editor::code_view::code_view_editable(
+    // 这两个状态应由面板持有并跨帧复用。
+    let output = egui_editor::code_view::code_view_editable(
         ui,
         &mut method.bytecode,
-        egui_editor::Language::Bytecode,
-        matches,
-        current,
-        &t,
+        egui_editor::code_view::CodeViewConfig {
+            lang: egui_editor::Language::Bytecode,
+            matches,
+            current,
+            ..egui_editor::code_view::CodeViewConfig::new(
+                egui::Id::new("method_bytecode"),
+                &t,
+            )
+        },
+        &mut bytecode_layout_cache,
+        &mut pending_scroll_to_line,
     );
+    changed |= output.value;
 }
 ```
 
+每个视图需持有稳定的 `Id`、对应的布局缓存（`code_view` 使用 `LayoutCache`，
+结构化视图使用 `EditableLayoutCache`）和 `Option<usize>` 滚动请求。
+`CodeViewConfig::new` 提供默认选项，按需设置 `matches`、`current`、`known_classes`、
+`lang` 或 `viewport_override`。`code_view` 的 `output.value` 是可选导航命中，
+可编辑视图的 `output.value` 表示文本是否改变。需要只读的编辑器样式时使用
+`code_view_readonly_editable_style`，其 `value` 恒为 `false`。视窗模式下 `response` 为 `None`。
+
 ### 查找栏
 
-`FindBar` 与业务逻辑解耦 — 通过 `update_text` / `update_bytes` 喂数据，支持文本和 hex 两种搜索模式：
+`FindBar` 与业务逻辑解耦 - 可通过 `FindBar::default()` 或 `FindBar::new()` 创建，再通过 `update_text` / `update_bytes` 喂数据，支持文本和 hex 两种搜索模式：
 
 ```rust
 // src/ui/editor/viewer.rs
@@ -136,11 +177,11 @@ if self.find_bar.open {
 不依赖 `code_view`，直接用 `highlight` 模块构建 `LayoutJob`（如搜索结果预览面板）：
 
 ```rust
-// src/ui/search/tab.rs — 逐行高亮 + 匹配区间标记
+// src/ui/search/tab.rs - 逐行高亮 + 匹配区间标记
 let lang = if bytecode {
     highlight::Language::Bytecode
 } else {
-    highlight::Language::Java
+    highlight::Language::ArkTs
 };
 let jobs = highlight::highlight_per_line(
     &sp.source_lines,

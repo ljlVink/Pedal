@@ -1449,7 +1449,7 @@ fn do_split_galley(galley: &Galley, chunk_size: usize, threshold: usize) -> Gall
         let gvr = &row.visuals.glyph_vertex_range;
         let all_mesh = &row.visuals.mesh;
 
-        // Clone row once, empty heavy fields — cheap base for per-chunk clones
+        // Clone row once, empty heavy fields - cheap base for per-chunk clones
         let mut base_row = (*placed_row.row).clone();
         base_row.glyphs = Vec::new();
         base_row.visuals = RowVisuals::default();

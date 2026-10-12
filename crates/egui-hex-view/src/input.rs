@@ -48,35 +48,34 @@ pub(crate) fn handle_mouse(
     state: &mut HexViewState,
     total_rows: usize,
 ) {
-    if response.clicked() || response.drag_started() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            if let Some((idx, region)) = hit_test(pos, cols, origin, data.len(), total_rows) {
-                state.cursor = Some(idx);
-                state.selection = None;
-                state.drag_anchor = Some(idx);
-                state.active_region = region;
-            } else {
-                state.cursor = None;
-                state.selection = None;
-                state.drag_anchor = None;
-            }
+    if (response.clicked() || response.drag_started())
+        && let Some(pos) = response.interact_pointer_pos()
+    {
+        if let Some((idx, region)) = hit_test(pos, cols, origin, data.len(), total_rows) {
+            state.cursor = Some(idx);
+            state.selection = None;
+            state.drag_anchor = Some(idx);
+            state.active_region = region;
+        } else {
+            state.cursor = None;
+            state.selection = None;
+            state.drag_anchor = None;
         }
     }
-    if response.dragged() {
-        if let (Some(anchor), Some(pos)) = (state.drag_anchor, response.interact_pointer_pos()) {
-            if let Some((idx, _)) = hit_test(pos, cols, origin, data.len(), total_rows) {
-                let (start, end) = if idx < anchor {
-                    (idx, anchor + 1)
-                } else {
-                    (anchor, idx + 1)
-                };
-                state.cursor = Some(idx);
-                if end - start > 1 {
-                    state.selection = Some((start, end));
-                } else {
-                    state.selection = None;
-                }
-            }
+    if response.dragged()
+        && let (Some(anchor), Some(pos)) = (state.drag_anchor, response.interact_pointer_pos())
+        && let Some((idx, _)) = hit_test(pos, cols, origin, data.len(), total_rows)
+    {
+        let (start, end) = if idx < anchor {
+            (idx, anchor + 1)
+        } else {
+            (anchor, idx + 1)
+        };
+        state.cursor = Some(idx);
+        if end - start > 1 {
+            state.selection = Some((start, end));
+        } else {
+            state.selection = None;
         }
     }
     if response.drag_stopped() {

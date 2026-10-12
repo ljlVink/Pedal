@@ -1,20 +1,19 @@
 //! 编辑器区域：egui_dock 容器 + tab 管理
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::render::{self, line_number_width};
 use super::style::dock;
 use super::tab::EditorTab;
 use super::view_toggle::ActiveView;
-use super::viewer::{EditorTabViewer, PendingNavigate, TabAction};
+use super::viewer::{EditorTabViewer, TabAction};
 use crate::appearance::theme;
 use eframe::egui;
 use egui_dock::{DockArea, DockState, SurfaceIndex};
 use egui_editor::find_bar::FindBar;
-use pervius_java_bridge::class_structure::SavedMember;
-use pervius_java_bridge::decompiler;
 use rust_i18n::t;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 tabookit::class! {
     /// 编辑器区域状态
@@ -25,31 +24,20 @@ tabookit::class! {
         pub find_bar: FindBar,
         /// 被 is_modified 拦截的关闭动作，由 App 消费并弹出确认对话框
         pub blocked_close: Option<TabAction>,
-        /// 已保存成员记录（entry_path → 成员集合），跨 tab 关闭/重开保留
-        pub saved_members: HashMap<String, HashSet<SavedMember>>,
-        /// Shift+Click 导航请求（由 viewer 产生，由 App 消费）
-        pub pending_navigate: Option<PendingNavigate>,
-        /// 源码编辑右键菜单触发的立即编译请求
-        pub pending_recompile: Option<String>,
+        /// 待懒生成的 ArkTS 反汇编条目
+        pub pending_disasm: Option<String>,
     }
     pub fn new() -> Self {
         Self {
             dock_state: DockState::new(vec![]),
             find_bar: FindBar::new(),
             blocked_close: None,
-            saved_members: HashMap::new(),
-            pending_navigate: None,
-            pending_recompile: None,
+            pending_disasm: None,
         }
     }
 
     /// 在给定 UI 区域内渲染
-    pub fn render(
-        &mut self,
-        ui: &mut egui::Ui,
-        jar_modified: &HashSet<String>,
-        known_classes: &HashSet<String>,
-    ) {
+    pub fn render(&mut self, ui: &mut egui::Ui, jar_modified: &HashSet<String>) {
         if self.is_empty() {
             Self::render_placeholder(ui);
             return;
@@ -64,8 +52,6 @@ tabookit::class! {
             find_bar: &mut self.find_bar,
             jar_modified,
             pending_close: None,
-            pending_navigate: None,
-            known_classes,
         };
         DockArea::new(&mut self.dock_state)
             .style(style)
@@ -74,16 +60,12 @@ tabookit::class! {
             .show_inside(ui, &mut viewer);
         let pending_close = viewer.pending_close.take();
         let action = viewer.action.take();
-        let nav = viewer.pending_navigate.take();
         drop(viewer);
         if let Some(entry_path) = pending_close {
             self.blocked_close = Some(TabAction::Close(entry_path));
         }
         if let Some(action) = action {
             self.handle_tab_action(action);
-        }
-        if let Some(nav) = nav {
-            self.pending_navigate = Some(nav);
         }
         ui.output_mut(|o| {
             if matches!(o.cursor_icon, egui::CursorIcon::Grab) {
@@ -139,7 +121,7 @@ tabookit::class! {
                 kb_rect,
                 egui::CornerRadius::same(3),
                 theme::BG_MEDIUM,
-                egui::Stroke::new(1.0, theme::BORDER),
+                egui::Stroke::new(1.0_f32, theme::BORDER),
                 egui::StrokeKind::Outside,
             );
             painter.galley(kb_pos, keybind_galley, theme::TEXT_MUTED);
@@ -155,7 +137,7 @@ tabookit::class! {
         ui.allocate_rect(rect, egui::Sense::hover());
     }
 
-    fn focused_tab(&mut self) -> Option<&mut EditorTab> {
+    pub fn focused_tab(&mut self) -> Option<&mut EditorTab> {
         if self.dock_state.find_active_focused().is_some() {
             return self.dock_state.find_active_focused().map(|(_, t)| t);
         }
@@ -174,31 +156,13 @@ tabookit::class! {
         let tab = self.focused_tab()?;
         match tab.active_view {
             ActiveView::Decompiled => {
-                let max_number = if tab.decompiled_line_mapping.is_empty() {
-                    tab.decompiled_data.line_count()
-                } else {
-                    tab.decompiled_line_mapping
-                        .iter()
-                        .filter_map(|n| n.map(|v| v as usize))
-                        .max()
-                        .unwrap_or(tab.decompiled_data.line_count())
-                };
-                Some(line_number_width(max_number))
+                Some(line_number_width(tab.decompiled_data.line_count()))
             }
-            ActiveView::Bytecode => None,
-            ActiveView::Hex => None,
+            ActiveView::Disasm | ActiveView::Hex => None,
         }
     }
 
-    pub fn open_tab(&mut self, mut tab: EditorTab) {
-        // 恢复跨 tab 关闭/重开保留的已保存成员标记
-        if let Some(entry_path) = &tab.entry_path {
-            if let Some(saved) = self.saved_members.get(entry_path) {
-                if let Some(cs) = &mut tab.class_structure {
-                    cs.restore_saved_flags(saved);
-                }
-            }
-        }
+    pub fn open_tab(&mut self, tab: EditorTab) {
         self.dock_state.main_surface_mut().push_to_focused_leaf(tab);
     }
 
@@ -216,11 +180,10 @@ tabookit::class! {
             return false;
         };
         let _ = self.dock_state.set_active_tab(tab_path);
-        if let Some(line) = line {
-            if let Some(tab) = self.focused_tab() {
+        if let Some(line) = line
+            && let Some(tab) = self.focused_tab() {
                 tab.pending_scroll_to_line = Some(line);
             }
-        }
         true
     }
 
@@ -228,14 +191,9 @@ tabookit::class! {
         Some(self.focused_tab()?.active_view)
     }
 
-    /// 当前聚焦 tab 是否为 .class 文件
-    pub fn focused_is_class(&mut self) -> bool {
-        self.focused_tab().is_some_and(|t| t.is_class)
-    }
-
-    /// 当前聚焦 tab 的 class 版本信息
-    pub fn focused_class_info(&mut self) -> Option<&str> {
-        self.focused_tab()?.class_info.as_deref()
+    /// 聚焦 tab 是否 ArkTS record
+    pub fn focused_is_ark(&mut self) -> bool {
+        self.focused_tab().is_some_and(|t| t.is_ark)
     }
 
     /// 当前聚焦 tab 的条目路径
@@ -243,7 +201,7 @@ tabookit::class! {
         self.focused_tab()?.entry_path.clone()
     }
 
-    /// 关闭指定 JAR 条目的 tab（调用方已处理未保存检查）。
+    /// 关闭指定条目的 tab（调用方已处理未保存检查）。
     pub fn close_entry_tab(&mut self, entry_path: &str) {
         let found = self
             .dock_state
@@ -253,18 +211,14 @@ tabookit::class! {
         }
     }
 
-    /// 重命名指定 JAR 条目的 tab 路径和标题。
+    /// 重命名指定条目的 tab 路径和标题。
     pub fn rename_entry_tab(&mut self, old_path: &str, new_path: &str) {
         let file_name = new_path.rsplit('/').next().unwrap_or(new_path);
-        let title = file_name.strip_suffix(".class").unwrap_or(file_name).to_string();
         for (_, tab) in self.dock_state.iter_all_tabs_mut() {
             if tab.entry_path.as_deref() == Some(old_path) {
                 tab.entry_path = Some(new_path.to_string());
-                tab.title = title.clone();
+                tab.title = file_name.to_string();
             }
-        }
-        if let Some(saved) = self.saved_members.remove(old_path) {
-            self.saved_members.insert(new_path.to_string(), saved);
         }
     }
 
@@ -272,7 +226,7 @@ tabookit::class! {
     pub fn unsaved_paths(&self) -> Vec<String> {
         self.dock_state
             .iter_all_tabs()
-            .filter(|(_, t)| t.is_modified || t.source_modified)
+            .filter(|(_, t)| t.is_modified)
             .filter_map(|(_, t)| t.entry_path.clone())
             .collect()
     }
@@ -283,13 +237,23 @@ tabookit::class! {
         }
     }
 
-    /// 循环切换聚焦 tab 的视图（仅 .class 文件）
+    /// 循环切换聚焦 tab 的视图（仅 ArkTS record 的源码/反汇编双视图）
     pub fn cycle_view(&mut self) {
-        if let Some(tab) = self.focused_tab() {
-            if !tab.is_class {
-                return;
+        if let Some(tab) = self.focused_tab()
+            && tab.is_ark {
+                tab.active_view = tab.active_view.next_ark();
             }
-            tab.active_view = tab.active_view.next();
+    }
+
+    /// 填充 ArkTS tab 的反汇编文本（懒生成完成后调用）
+    pub fn set_tab_disasm(&mut self, entry_path: &str, text: String) {
+        let found = self.dock_state.find_tab_from(|t| t.entry_path.as_deref() == Some(entry_path));
+        if let Some(tp) = found {
+            let node = &mut self.dock_state[tp.surface][tp.node];
+            if let Some(leaf) = node.get_leaf_mut()
+                && let Some(tab) = leaf.tabs.get_mut(tp.tab.0) {
+                    tab.set_disasm(text);
+                }
         }
     }
 
@@ -301,7 +265,7 @@ tabookit::class! {
     /// 切换当前 tab 的视窗模式
     pub fn toggle_viewport(&mut self) {
         let tab = tabookit::or!(self.focused_tab(), return);
-        if !(tab.is_text || (tab.is_class && tab.is_source_unlocked())) {
+        if !tab.is_text {
             return;
         }
         let currently_on = match tab.viewport_override {
@@ -315,49 +279,6 @@ tabookit::class! {
                 ),
         };
         tab.viewport_override = Some(!currently_on);
-    }
-
-    /// 反编译完成后，刷新所有已打开的 .class tab 的源码
-    pub fn refresh_class_tabs(&mut self, jar_hash: Option<&str>, skip_entries: &HashSet<String>) {
-        for (_, tab) in self.dock_state.iter_all_tabs_mut() {
-            let entry = match &tab.entry_path {
-                Some(p) if p.ends_with(".class") => p.clone(),
-                _ => continue,
-            };
-            if skip_entries.contains(&entry) {
-                continue;
-            }
-            let Some(hash) = jar_hash else {
-                tab.set_decompiled(
-                    t!("editor.decompiler_placeholder").to_string(),
-                    egui_editor::Language::Java,
-                    Vec::new(),
-                );
-                if tab.active_view == ActiveView::Decompiled {
-                    tab.active_view = ActiveView::Hex;
-                }
-                continue;
-            };
-            if let Some(cached) = decompiler::cached_source(hash, &entry) {
-                let lang = match cached.language {
-                    decompiler::DecompiledSourceLanguage::Kotlin => egui_editor::Language::Kotlin,
-                    decompiler::DecompiledSourceLanguage::Java => egui_editor::Language::Java,
-                };
-                tab.set_decompiled(cached.source, lang, cached.line_mapping);
-                if tab.active_view == ActiveView::Hex {
-                    tab.active_view = ActiveView::Decompiled;
-                }
-            } else {
-                tab.set_decompiled(
-                    t!("editor.decompiler_placeholder").to_string(),
-                    egui_editor::Language::Java,
-                    Vec::new(),
-                );
-                if tab.active_view == ActiveView::Decompiled {
-                    tab.active_view = ActiveView::Hex;
-                }
-            }
-        }
     }
 
     /// 关闭当前活跃 tab
@@ -383,7 +304,7 @@ tabookit::class! {
             if let Some(tab_idx) = active {
                 let is_modified = leaf
                     .and_then(|l| l.tabs.get(tab_idx.0))
-                    .is_some_and(|t| t.is_modified || t.source_modified);
+                    .is_some_and(|t| t.is_modified);
                 if is_modified {
                     let entry_path = leaf
                         .and_then(|l| l.tabs.get(tab_idx.0))
@@ -399,11 +320,7 @@ tabookit::class! {
 
     /// 关闭所有 tab
     pub fn close_all_tabs(&mut self) {
-        if self
-            .dock_state
-            .iter_all_tabs()
-            .any(|(_, t)| t.is_modified || t.source_modified)
-        {
+        if self.dock_state.iter_all_tabs().any(|(_, t)| t.is_modified) {
             self.blocked_close = Some(TabAction::CloseAll);
             return;
         }
@@ -424,16 +341,16 @@ tabookit::class! {
             TabAction::Close(path) => self
                 .dock_state
                 .iter_all_tabs()
-                .any(|(_, t)| t.entry_path == *path && (t.is_modified || t.source_modified)),
+                .any(|(_, t)| t.entry_path == *path && t.is_modified),
             TabAction::CloseAll => self
                 .dock_state
                 .iter_all_tabs()
-                .any(|(_, t)| t.is_modified || t.source_modified),
+                .any(|(_, t)| t.is_modified),
             TabAction::CloseOthers(keep) => self
                 .dock_state
                 .iter_all_tabs()
-                .any(|(_, t)| t.entry_path != *keep && (t.is_modified || t.source_modified)),
-            TabAction::RecompileSource(_) => false,
+                .any(|(_, t)| t.entry_path != *keep && t.is_modified),
+            TabAction::LoadDisasm(_) => false,
             TabAction::CloseToRight(after) => {
                 let found = self.dock_state.find_tab_from(|t| t.entry_path == *after);
                 match found {
@@ -442,7 +359,7 @@ tabookit::class! {
                         .is_some_and(|leaf| {
                             leaf.tabs[tab_path.tab.0 + 1..]
                                 .iter()
-                                .any(|t| t.is_modified || t.source_modified)
+                                .any(|t| t.is_modified)
                         }),
                     None => false,
                 }
@@ -453,10 +370,8 @@ tabookit::class! {
     /// 强制执行 tab 关闭动作（跳过 is_modified 检查，由确认对话框调用）
     pub fn force_tab_action(&mut self, action: TabAction) {
         match action {
-            TabAction::RecompileSource(path) => {
-                if let Some(path) = path {
-                    self.pending_recompile = Some(path);
-                }
+            TabAction::LoadDisasm(path) => {
+                self.pending_disasm = Some(path);
             }
             TabAction::Close(path) => {
                 let found = self.dock_state.find_tab_from(|t| t.entry_path == path);

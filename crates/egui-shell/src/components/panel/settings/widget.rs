@@ -95,7 +95,7 @@ pub fn section_header(ui: &mut egui::Ui, theme: &SettingsTheme, title: &str) {
             egui::pos2(rect.left() + PAD_LEFT, rect.bottom()),
             egui::pos2(rect.right() - PAD_RIGHT, rect.bottom()),
         ],
-        egui::Stroke::new(1.0, theme.border),
+        egui::Stroke::new(1.0_f32, theme.border),
     );
 }
 
@@ -214,28 +214,28 @@ pub fn slider(
     };
     painter.circle_filled(egui::pos2(handle_x, mid_y), handle_r, handle_color);
     // 拖拽交互
-    if resp.dragged() {
-        if let Some(pos) = resp.interact_pointer_pos() {
-            let raw = ((pos.x - track_left) / track_w).clamp(0.0, 1.0);
-            let mut v = min + raw * (max - min);
-            if step > 0.0 {
-                v = (v / step).round() * step;
-            }
-            *value = v.clamp(min, max);
+    if resp.dragged()
+        && let Some(pos) = resp.interact_pointer_pos()
+    {
+        let raw = ((pos.x - track_left) / track_w).clamp(0.0, 1.0);
+        let mut v = min + raw * (max - min);
+        if step > 0.0 {
+            v = (v / step).round() * step;
         }
+        *value = v.clamp(min, max);
     }
     // 点击跳转
-    if resp.clicked() {
-        if let Some(pos) = resp.interact_pointer_pos() {
-            if pos.x >= track_left && pos.x <= track_right {
-                let raw = ((pos.x - track_left) / track_w).clamp(0.0, 1.0);
-                let mut v = min + raw * (max - min);
-                if step > 0.0 {
-                    v = (v / step).round() * step;
-                }
-                *value = v.clamp(min, max);
-            }
+    if resp.clicked()
+        && let Some(pos) = resp.interact_pointer_pos()
+        && pos.x >= track_left
+        && pos.x <= track_right
+    {
+        let raw = ((pos.x - track_left) / track_w).clamp(0.0, 1.0);
+        let mut v = min + raw * (max - min);
+        if step > 0.0 {
+            v = (v / step).round() * step;
         }
+        *value = v.clamp(min, max);
     }
     (*value - old).abs() > f32::EPSILON
 }
@@ -362,7 +362,7 @@ pub fn path_picker_with(
     painter.rect_stroke(
         btn_rect,
         3.0,
-        egui::Stroke::new(1.0, theme.border),
+        egui::Stroke::new(1.0_f32, theme.border),
         egui::StrokeKind::Outside,
     );
     painter.text(
@@ -372,10 +372,10 @@ pub fn path_picker_with(
         egui::FontId::proportional(11.0),
         theme.text_secondary,
     );
-    if btn_resp.clicked() {
-        if let Some(path) = on_browse() {
-            *value = path;
-        }
+    if btn_resp.clicked()
+        && let Some(path) = on_browse()
+    {
+        *value = path;
     }
     // 文本输入框（左下角）
     let input_left = rect.left() + PAD_LEFT;
@@ -389,7 +389,7 @@ pub fn path_picker_with(
             egui::pos2(input_rect.left(), input_rect.bottom()),
             egui::pos2(input_rect.right(), input_rect.bottom()),
         ],
-        egui::Stroke::new(1.0, theme.border),
+        egui::Stroke::new(1.0_f32, theme.border),
     );
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(input_rect));
     child.add(
@@ -540,7 +540,7 @@ pub fn keybind_row_with(
         painter.rect_stroke(
             btn_rect,
             3.0,
-            egui::Stroke::new(1.0, theme.border),
+            egui::Stroke::new(1.0_f32, theme.border),
             egui::StrokeKind::Outside,
         );
         let text_color = if *bind != default {

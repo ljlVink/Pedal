@@ -1,6 +1,7 @@
 //! 搜索面板的小型 widget 和渲染辅助函数
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::result::SearchResultGroup;
 use crate::appearance::{codicon, theme};
@@ -35,7 +36,7 @@ pub fn render_group_header(ui: &mut egui::Ui, group: &SearchResultGroup) -> bool
     painter.text(
         egui::pos2(rect.left() + 24.0, mid_y),
         egui::Align2::LEFT_CENTER,
-        codicon::JAVA,
+        codicon::SYMBOL_CLASS,
         egui::FontId::new(12.0, codicon::family()),
         theme::VERDIGRIS,
     );
@@ -96,7 +97,7 @@ pub fn separator(ui: &mut egui::Ui) {
             egui::pos2(avail.left(), avail.top()),
             egui::pos2(avail.right(), avail.top()),
         ],
-        egui::Stroke::new(1.0, theme::BORDER),
+        egui::Stroke::new(1.0_f32, theme::BORDER),
     );
     ui.allocate_space(egui::vec2(avail.width(), 1.0));
 }

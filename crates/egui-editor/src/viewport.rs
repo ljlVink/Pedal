@@ -7,12 +7,11 @@
 //! @author sky
 
 use crate::code_view::{
-    EditableLayoutCache, GUTTER_PAD, TEXT_PAD_LEFT, apply_scroll_delta, byte_offset_at_char,
-    code_text_edit, detect_edge_scroll, extract_highlight_word, hash_text, line_number_width,
-    paint_line_numbers, paint_word_highlight_overlay, rebuild_galley,
+    CodeViewConfig, EditableLayoutCache, GUTTER_PAD, GalleyConfig, LayoutHighlights, TEXT_PAD_LEFT,
+    apply_scroll_delta, byte_offset_at_char, code_text_edit, detect_edge_scroll,
+    extract_highlight_word, hash_text, line_number_width, paint_line_numbers,
+    paint_word_highlight_overlay, rebuild_galley,
 };
-use crate::highlight::Language;
-use crate::search::FindMatch;
 use crate::theme::CodeViewTheme;
 use eframe::egui;
 use std::ops::Range;
@@ -146,16 +145,20 @@ impl egui::TextBuffer for ReadonlyViewportTextBuffer<'_> {
 /// 仅布局光标附近的文本窗口，将大文本的布局/渲染/交互开销从 O(n) 降至 O(窗口大小)。
 pub(crate) fn code_view_editable_viewport(
     ui: &mut egui::Ui,
-    id: egui::Id,
     text: &mut String,
-    lang: Language,
-    matches: &[FindMatch],
-    current: Option<usize>,
-    theme: &CodeViewTheme,
+    config: CodeViewConfig<'_>,
     cache: &mut Option<EditableLayoutCache>,
     _scroll_to_line: &mut Option<usize>,
     editable: bool,
 ) -> bool {
+    let CodeViewConfig {
+        id,
+        lang,
+        matches,
+        current,
+        theme,
+        ..
+    } = config;
     let code_font = egui::FontId::monospace(theme.code_font_size);
     // 全文统计信息缓存：仅在文本长度变更时重新计算（避免每帧 O(n)）
     let text_len = text.len();
@@ -247,16 +250,20 @@ pub(crate) fn code_view_editable_viewport(
                 ui,
                 s,
                 th,
-                lang,
-                match_ref,
-                local_current,
-                word_ref,
-                word_gen,
-                theme,
+                GalleyConfig {
+                    lang,
+                    highlights: LayoutHighlights {
+                        match_ranges: match_ref,
+                        current_match: local_current,
+                        word_ranges: word_ref,
+                        word_gen,
+                    },
+                    theme,
+                    is_viewport: true,
+                    viewport_cursor_char: cursor_char,
+                    viewport_window_start: win_start_char,
+                },
                 cache,
-                true,
-                cursor_char,
-                win_start_char,
             )
             .unwrap()
         };
@@ -335,8 +342,10 @@ pub(crate) fn code_view_editable_viewport(
             out_galley_pos,
             win_text,
             &local_word_ranges,
-            new_cursor_char.saturating_sub(win_start_char),
-            selection_secondary_global.saturating_sub(win_start_char),
+            (
+                new_cursor_char.saturating_sub(win_start_char),
+                selection_secondary_global.saturating_sub(win_start_char),
+            ),
             theme.word_highlight_bg,
         );
     }

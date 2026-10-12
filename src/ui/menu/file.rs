@@ -1,6 +1,7 @@
 //! File 子菜单
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::MenuState;
 use crate::app::App;
@@ -69,7 +70,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         mt,
         &t!("menu.export_jar"),
         Some(&app.settings.keymap.export_jar),
-        state.has_jar && state.is_idle,
+        state.has_jar && state.is_idle && !state.is_ark,
     ) {
         app.export_jar();
     }
@@ -78,7 +79,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         mt,
         &t!("menu.save_overwrite_source"),
         None,
-        state.has_jar && state.is_idle && state.has_jar_changes,
+        state.has_jar && state.is_idle && state.has_jar_changes && !state.is_ark,
     ) {
         app.save_jar_overwrite_source();
     }
@@ -87,18 +88,9 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         mt,
         &t!("menu.export_decompiled"),
         Some(&app.settings.keymap.export_decompiled),
-        state.has_jar && state.is_decompiled && state.is_idle,
+        state.is_ark && state.is_idle,
     ) {
         app.export_decompiled();
-    }
-    if menu_item_if(
-        ui,
-        mt,
-        &t!("menu.re_decompile"),
-        None,
-        state.has_jar && state.is_idle,
-    ) {
-        app.redecompile_jar();
     }
     ui.separator();
     if menu_item(

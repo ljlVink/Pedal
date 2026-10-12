@@ -40,7 +40,7 @@ pub fn separator(ui: &mut egui::Ui, color: egui::Color32) {
             egui::pos2(avail.left(), avail.top()),
             egui::pos2(avail.right(), avail.top()),
         ],
-        egui::Stroke::new(1.0, color),
+        egui::Stroke::new(1.0_f32, color),
     );
     ui.allocate_space(egui::vec2(avail.width(), 1.0));
 }

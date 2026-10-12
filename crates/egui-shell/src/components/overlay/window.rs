@@ -201,10 +201,9 @@ tabookit::class! {
             self.id.with("header_drag"),
             egui::Sense::drag(),
         );
-        if resp.dragged() {
-            if let Some(pos) = &mut self.pos {
+        if resp.dragged()
+            && let Some(pos) = &mut self.pos {
                 *pos += resp.drag_delta();
             }
-        }
     }
 }

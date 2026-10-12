@@ -114,7 +114,7 @@ fn nest_inner_classes(node: &mut TreeNode) {
     }
     // 按名称长度降序处理，确保最深的内部类先嵌套
     let mut keys: Vec<String> = class_map.keys().cloned().collect();
-    keys.sort_by(|a, b| b.len().cmp(&a.len()));
+    keys.sort_by_key(|key| std::cmp::Reverse(key.len()));
     for key in keys {
         if !key.contains('$') {
             continue;

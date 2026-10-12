@@ -173,7 +173,7 @@ pub fn show(
     }
     let char_w = layout::measure_char_width(ui);
     let cols = Cols::compute(char_w);
-    let total_rows = (data.len() + BYTES_PER_ROW - 1) / BYTES_PER_ROW;
+    let total_rows = data.len().div_ceil(BYTES_PER_ROW);
     let content_w = cols.total_w.max(ui.available_width());
     // 列头
     paint::header(ui, &cols, theme, content_w);
@@ -233,7 +233,7 @@ pub fn show(
             // 列分隔线
             let vis_top_y = origin.y + PAD_TOP + first_row as f32 * ROW_H;
             let vis_bot_y = origin.y + PAD_TOP + last_row as f32 * ROW_H;
-            let sep_stroke = egui::Stroke::new(1.0, theme.separator);
+            let sep_stroke = egui::Stroke::new(1.0_f32, theme.separator);
             painter.line_segment(
                 [
                     egui::pos2(origin.x + cols.sep1_x, vis_top_y),
@@ -248,23 +248,21 @@ pub fn show(
                 ],
                 sep_stroke,
             );
+            let row_config = paint::HexRowConfig {
+                cols: &cols,
+                font: &font,
+                origin,
+                state,
+                hover_idx,
+                hover_row,
+                theme,
+                content_w,
+                highlights,
+                current_highlight,
+            };
             // 绘制可见行
             for row in first_row..last_row {
-                paint::row(
-                    &painter,
-                    &cols,
-                    &font,
-                    origin,
-                    row,
-                    data,
-                    state,
-                    hover_idx,
-                    hover_row,
-                    theme,
-                    content_w,
-                    highlights,
-                    current_highlight,
-                );
+                paint::row(&painter, row, data, &row_config);
             }
             // 右键菜单
             response.context_menu(|ui| {

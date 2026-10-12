@@ -445,12 +445,12 @@ impl RichText {
         };
 
         let underline = if underline {
-            crate::Stroke::new(1.0, line_color)
+            crate::Stroke::new(1.0_f32, line_color)
         } else {
             crate::Stroke::NONE
         };
         let strikethrough = if strikethrough {
-            crate::Stroke::new(1.0, line_color)
+            crate::Stroke::new(1.0_f32, line_color)
         } else {
             crate::Stroke::NONE
         };

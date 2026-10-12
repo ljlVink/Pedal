@@ -15,6 +15,16 @@ const LINE_HIGHLIGHT_HOLD: f64 = 0.5;
 /// 行高亮动画淡出时间（秒）
 const LINE_HIGHLIGHT_FADE: f64 = 0.8;
 
+/// 单帧代码视图的身份、行号布局与字体配置。
+pub(crate) struct CodeFrameConfig<'a> {
+    pub(crate) id: egui::Id,
+    pub(crate) code_font: &'a egui::FontId,
+    pub(crate) theme: &'a CodeViewTheme,
+    pub(crate) gutter_w: f32,
+    pub(crate) line_count: usize,
+    pub(crate) line_mapping: &'a [Option<u32>],
+}
+
 pub(crate) struct TextEditFrameState {
     pub(crate) galley_y: f32,
     pub(crate) edge_scroll_delta: egui::Vec2,
@@ -93,17 +103,20 @@ pub(crate) fn line_highlight_ids(id: egui::Id) -> (egui::Id, egui::Id) {
 pub(crate) fn show_code_view_frame(
     ui: &mut egui::Ui,
     text: &mut dyn egui::TextBuffer,
-    id: egui::Id,
-    code_font: &egui::FontId,
-    theme: &CodeViewTheme,
-    gutter_w: f32,
-    hl_time_id: egui::Id,
-    hl_line_id: egui::Id,
-    line_count: usize,
+    config: CodeFrameConfig<'_>,
     scroll_to_line: &mut Option<usize>,
     layouter: &mut dyn FnMut(&egui::Ui, &dyn egui::TextBuffer, f32) -> Arc<egui::Galley>,
     mut inspect_output: impl FnMut(&egui::Ui, &egui::text_edit::TextEditOutput),
 ) -> TextEditFrameState {
+    let CodeFrameConfig {
+        id,
+        code_font,
+        theme,
+        gutter_w,
+        line_count,
+        ..
+    } = config;
+    let (hl_time_id, hl_line_id) = line_highlight_ids(id);
     let mut frame = TextEditFrameState {
         galley_y: 0.0,
         edge_scroll_delta: egui::Vec2::ZERO,
@@ -161,12 +174,16 @@ pub(crate) fn finish_code_view_frame(
     text: &str,
     frame: &TextEditFrameState,
     prev_word_ranges: &[(usize, usize)],
-    line_count: usize,
-    line_mapping: &[Option<u32>],
-    gutter_w: f32,
-    code_font: &egui::FontId,
-    theme: &CodeViewTheme,
+    config: CodeFrameConfig<'_>,
 ) -> Option<String> {
+    let CodeFrameConfig {
+        code_font,
+        theme,
+        gutter_w,
+        line_count,
+        line_mapping,
+        ..
+    } = config;
     if let Some(g) = frame.galley.as_ref() {
         paint_word_highlight_overlay(
             ui,
@@ -174,8 +191,7 @@ pub(crate) fn finish_code_view_frame(
             frame.galley_pos,
             text,
             prev_word_ranges,
-            frame.cursor_primary,
-            frame.cursor_secondary,
+            (frame.cursor_primary, frame.cursor_secondary),
             theme.word_highlight_bg,
         );
     }

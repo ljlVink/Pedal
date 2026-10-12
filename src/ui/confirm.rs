@@ -3,6 +3,7 @@
 //! UI 渲染委托给 `egui_shell::components::ConfirmDialog`。
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::editor::TabAction;
 use crate::app::App;
@@ -23,9 +24,7 @@ pub enum ConfirmAction {
     Open(PathBuf),
     /// 关闭 tab（单个/批量）
     TabClose(TabAction),
-    /// 大 JAR 全量反编译确认
-    DecompileAll,
-    /// 选择在哪个窗口打开 JAR（Ask 模式）
+    /// 选择在哪个窗口打开（Ask 模式）
     OpenWindowChoice(PathBuf),
 }
 
@@ -40,7 +39,7 @@ impl App {
                 .editor
                 .dock_state
                 .iter_all_tabs()
-                .any(|(_, tab)| tab.is_modified || tab.source_modified)
+                .any(|(_, tab)| tab.is_modified)
     }
 
     /// 带确认的关闭请求
@@ -117,7 +116,6 @@ impl App {
                 // 全局动作：清除所有未保存标记，避免 has_unsaved_changes() 再次拦截
                 for (_, tab) in self.layout.editor.dock_state.iter_all_tabs_mut() {
                     tab.is_modified = false;
-                    tab.source_modified = false;
                 }
                 if let Some(jar) = self.workspace.jar_mut() {
                     jar.clear_modified();
@@ -138,9 +136,6 @@ impl App {
             ConfirmAction::TabClose(tab_action) => {
                 self.layout.editor.force_tab_action(tab_action);
             }
-            ConfirmAction::DecompileAll => {
-                self.start_confirmed_decompile();
-            }
             ConfirmAction::OpenWindowChoice(_) => {
                 // 由独立的多选项弹窗处理，不经过此分支
             }
@@ -156,35 +151,15 @@ impl App {
             self.render_window_choice(ctx);
             return;
         }
-        let is_decompile = matches!(action, ConfirmAction::DecompileAll);
-        let (title, message, confirm_label, cancel_label, confirm_color);
-        if is_decompile {
-            let (size_mb, count) = self
-                .workspace
-                .jar()
-                .map(|j| (j.file_size as f64 / 1_000_000.0, j.class_count()))
-                .unwrap_or((0.0, 0));
-            let size_str = if size_mb >= 10.0 {
-                format!("{size_mb:.0}")
-            } else {
-                format!("{size_mb:.1}")
-            };
-            title = t!("confirm.decompile_title");
-            message = t!("confirm.decompile_message", size = size_str, count = count);
-            confirm_label = t!("confirm.decompile_yes");
-            cancel_label = t!("confirm.decompile_skip");
-            confirm_color = None;
-        } else {
-            title = t!("confirm.unsaved_title");
-            message = t!("confirm.unsaved_message");
-            confirm_label = t!("confirm.discard");
-            cancel_label = t!("confirm.cancel");
-            confirm_color = Some(theme::ACCENT_RED);
-        };
+        let title = t!("confirm.unsaved_title");
+        let message = t!("confirm.unsaved_message");
+        let confirm_label = t!("confirm.discard");
+        let cancel_label = t!("confirm.cancel");
+        let confirm_color = Some(theme::ACCENT_RED);
         let mut dialog = ConfirmDialog::new(&title, &message)
             .confirm_label(&confirm_label)
             .cancel_label(&cancel_label)
-            .close_on_click_outside(!is_decompile);
+            .close_on_click_outside(true);
         if let Some(color) = confirm_color {
             dialog = dialog.confirm_color(color);
         }
@@ -281,12 +256,12 @@ impl App {
             .response
             .rect;
         // 点击外部关闭
-        if choice.is_none() && ctx.input(|i| i.pointer.any_pressed()) {
-            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                if !dialog_rect.contains(pos) {
-                    choice = Some(0);
-                }
-            }
+        if choice.is_none()
+            && ctx.input(|i| i.pointer.any_pressed())
+            && let Some(pos) = ctx.input(|i| i.pointer.interact_pos())
+            && !dialog_rect.contains(pos)
+        {
+            choice = Some(0);
         }
         match choice {
             // 取消

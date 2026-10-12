@@ -15,6 +15,7 @@ const BAR_H: f32 = 30.0;
 
 tabookit::class! {
     /// 编辑器内查找栏
+    #[derive(Default)]
     pub struct FindBar {
         /// 是否打开
         pub open: bool,
@@ -120,7 +121,7 @@ tabookit::class! {
         painter.rect_stroke(
             bar_rect,
             6.0,
-            egui::Stroke::new(1.0, theme.border),
+            egui::Stroke::new(1.0_f32, theme.border),
             egui::StrokeKind::Inside,
         );
         // 内容
@@ -300,9 +301,7 @@ tabookit::class! {
         }
         self.last_key = key;
         self.matches = search::find_all(text, &self.query, self.case_sensitive, self.whole_word);
-        if self.matches.is_empty() {
-            self.current = 0;
-        } else if self.current >= self.matches.len() {
+        if self.current >= self.matches.len() {
             self.current = 0;
         }
     }
@@ -320,9 +319,7 @@ tabookit::class! {
         }
         self.last_key = key;
         self.matches = search::find_bytes(data, &self.query, self.case_sensitive);
-        if self.matches.is_empty() {
-            self.current = 0;
-        } else if self.current >= self.matches.len() {
+        if self.current >= self.matches.len() {
             self.current = 0;
         }
     }

@@ -1,8 +1,8 @@
 //! TabViewer 实现：定义每个 Tab 的标题和内容渲染
 //!
 //! @author sky
+//! @author ljlVink
 
-use super::bytecode;
 use super::render;
 use super::tab::EditorTab;
 use super::view_toggle::ActiveView;
@@ -10,22 +10,11 @@ use crate::appearance::{codicon, theme};
 use crate::ui::keybindings;
 use eframe::egui;
 use egui_dock::{NodePath, TabViewer, tab_viewer::OnCloseResponse};
-use egui_editor::code_view::NavigationHit;
 use egui_editor::find_bar::FindBar;
 use egui_shell::components::menu_item;
 use rust_i18n::t;
 
 use std::collections::HashSet;
-
-/// Ctrl+Click 导航请求（附带来源 tab 上下文）
-pub struct PendingNavigate {
-    /// 导航 hit 信息
-    pub hit: NavigationHit,
-    /// 来源文件的 entry_path（用于解析同包类名）
-    pub source_entry: Option<String>,
-    /// 来源文件的反编译源码（用于解析 import 语句）
-    pub source_text: String,
-}
 
 /// Tab 右键菜单触发的动作
 pub enum TabAction {
@@ -36,8 +25,8 @@ pub enum TabAction {
     CloseOthers(Option<String>),
     /// 关闭指定 tab 右侧的所有 tab
     CloseToRight(Option<String>),
-    /// 立即重新编译源码编辑 tab
-    RecompileSource(Option<String>),
+    /// ArkTS 反汇编懒生成请求
+    LoadDisasm(String),
 }
 
 pub struct EditorTabViewer<'a> {
@@ -45,14 +34,10 @@ pub struct EditorTabViewer<'a> {
     pub action: Option<TabAction>,
     /// 编辑器内查找栏状态
     pub find_bar: &'a mut FindBar,
-    /// JAR 中已保存但未落盘的条目路径
+    /// 归档中已保存但未落盘的条目路径
     pub jar_modified: &'a HashSet<String>,
     /// on_close 被 is_modified 拦截时记录要关闭的 tab 路径
     pub pending_close: Option<Option<String>>,
-    /// Ctrl+Click 导航请求（每帧最多一个，由 EditorArea 传播到 App 层）
-    pub pending_navigate: Option<PendingNavigate>,
-    /// JAR 内已知简短类名集合（hover 过滤用）
-    pub known_classes: &'a HashSet<String>,
 }
 
 impl TabViewer for EditorTabViewer<'_> {
@@ -62,7 +47,11 @@ impl TabViewer for EditorTabViewer<'_> {
         let mut job = egui::text::LayoutJob::default();
         job.append("", 4.0, egui::TextFormat::default());
         job.append(
-            codicon::JAVA,
+            if tab.is_ark {
+                codicon::SYMBOL_CLASS
+            } else {
+                codicon::FILE
+            },
             0.0,
             egui::TextFormat {
                 font_id: egui::FontId::new(11.0, codicon::family()),
@@ -80,18 +69,6 @@ impl TabViewer for EditorTabViewer<'_> {
                 ..Default::default()
             },
         );
-        if tab.is_class && tab.is_source_unlocked() {
-            job.append(" ", 0.0, egui::TextFormat::default());
-            job.append(
-                codicon::EDIT,
-                0.0,
-                egui::TextFormat {
-                    font_id: egui::FontId::new(11.0, codicon::family()),
-                    color: theme::ACCENT_CYAN,
-                    ..Default::default()
-                },
-            );
-        }
         job.append("", 4.0, egui::TextFormat::default());
         job.into()
     }
@@ -103,7 +80,7 @@ impl TabViewer for EditorTabViewer<'_> {
             match tab.active_view {
                 ActiveView::Hex => self.find_bar.update_bytes(&tab.raw_bytes),
                 ActiveView::Decompiled => self.find_bar.update_text(&tab.decompiled),
-                ActiveView::Bytecode => self.find_bar.update_text(tab.selected_bytecode_text()),
+                ActiveView::Disasm => self.find_bar.update_text(&tab.disasm_text),
             }
         }
         let (matches, current) = if self.find_bar.open {
@@ -112,57 +89,73 @@ impl TabViewer for EditorTabViewer<'_> {
             (vec![], None)
         };
         // 滚动到当前匹配项
-        if self.find_bar.take_scroll_request() {
-            if let Some(idx) = current {
-                if let Some(m) = matches.get(idx) {
-                    match tab.active_view {
-                        ActiveView::Hex => {
-                            tab.hex_state.scroll_to_byte = Some(m.start);
-                        }
-                        ActiveView::Decompiled => {
-                            let line = tab.decompiled[..m.start.min(tab.decompiled.len())]
-                                .as_bytes()
-                                .iter()
-                                .filter(|&&b| b == b'\n')
-                                .count();
-                            tab.pending_scroll_to_line = Some(line);
-                        }
-                        ActiveView::Bytecode => {
-                            let text = tab.selected_bytecode_text();
-                            let line = text[..m.start.min(text.len())]
-                                .as_bytes()
-                                .iter()
-                                .filter(|&&b| b == b'\n')
-                                .count();
-                            tab.pending_scroll_to_line = Some(line);
-                        }
-                    }
+        if self.find_bar.take_scroll_request()
+            && let Some(idx) = current
+            && let Some(m) = matches.get(idx)
+        {
+            match tab.active_view {
+                ActiveView::Hex => {
+                    tab.hex_state.scroll_to_byte = Some(m.start);
+                }
+                ActiveView::Decompiled => {
+                    let line = tab.decompiled.as_bytes()[..m.start.min(tab.decompiled.len())]
+                        .iter()
+                        .filter(|&&b| b == b'\n')
+                        .count();
+                    tab.pending_scroll_to_line = Some(line);
+                }
+                ActiveView::Disasm => {
+                    let line = tab.disasm_text.as_bytes()[..m.start.min(tab.disasm_text.len())]
+                        .iter()
+                        .filter(|&&b| b == b'\n')
+                        .count();
+                    tab.pending_scroll_to_line = Some(line);
                 }
             }
         }
+        // ArkTS tab：反汇编视图懒生成
+        if tab.active_view == ActiveView::Disasm
+            && tab.disasm_text.is_empty()
+            && let Some(path) = tab.entry_path.clone()
+        {
+            self.action = Some(TabAction::LoadDisasm(path));
+        }
+        // ArkTS 子标签栏（源码 | 反汇编），jadx 风格置于内容上方
+        if tab.is_ark {
+            egui::Panel::top(ui.id().with("ark_subtabs"))
+                .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 3)))
+                .show_inside(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let bt = crate::appearance::theme::flat_button_theme(theme::TEXT_SECONDARY);
+                        let src_sel = tab.active_view == ActiveView::Decompiled;
+                        let src_label = t!("editor.view_source");
+                        let src_btn = egui_shell::components::FlatButton::new(&src_label, &bt)
+                            .min_size(egui::vec2(64.0, 24.0))
+                            .active(src_sel);
+                        if ui.add(src_btn).clicked() {
+                            tab.active_view = ActiveView::Decompiled;
+                        }
+                        let asm_sel = tab.active_view == ActiveView::Disasm;
+                        let asm_label = t!("editor.view_disasm");
+                        let asm_btn = egui_shell::components::FlatButton::new(&asm_label, &bt)
+                            .min_size(egui::vec2(64.0, 24.0))
+                            .active(asm_sel);
+                        if ui.add(asm_btn).clicked() {
+                            tab.active_view = ActiveView::Disasm;
+                        }
+                    });
+                });
+        }
         // 渲染内容
         match tab.active_view {
-            ActiveView::Decompiled if tab.is_text || (tab.is_class && tab.is_source_unlocked()) => {
-                if render::render_editable(ui, tab, &matches, current) {
-                    self.action = Some(TabAction::RecompileSource(tab.entry_path.clone()));
-                }
+            ActiveView::Decompiled if tab.is_text => {
+                render::render_editable(ui, tab, &matches, current);
             }
             ActiveView::Decompiled => {
-                let (hit, recompile) =
-                    render::render_decompiled(ui, tab, &matches, current, self.known_classes);
-                if let Some(hit) = hit {
-                    self.pending_navigate = Some(PendingNavigate {
-                        hit,
-                        source_entry: tab.entry_path.clone(),
-                        source_text: tab.decompiled.clone(),
-                    });
-                }
-                if recompile {
-                    self.action = Some(TabAction::RecompileSource(tab.entry_path.clone()));
-                }
+                render::render_decompiled(ui, tab, &matches, current);
             }
-            ActiveView::Bytecode => bytecode::render_bytecode_panel(ui, tab, &matches, current),
             ActiveView::Hex => render::render_hex(ui, tab, &matches, current),
+            ActiveView::Disasm => render::render_disasm(ui, tab, &matches, current),
         }
         // 浮动查找栏（overlay，用 clip_rect 定位到可见区域，不随 ScrollArea 滚动）
         if self.find_bar.open {
@@ -209,7 +202,7 @@ impl TabViewer for EditorTabViewer<'_> {
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
-        if tab.is_modified || tab.source_modified {
+        if tab.is_modified {
             self.pending_close = Some(tab.entry_path.clone());
             return OnCloseResponse::Focus;
         }
@@ -221,13 +214,13 @@ impl TabViewer for EditorTabViewer<'_> {
     }
 
     fn modification_color(&self, tab: &Self::Tab) -> Option<egui::Color32> {
-        if tab.is_modified || tab.source_modified {
+        if tab.is_modified {
             return Some(theme::ACCENT_ORANGE);
         }
-        if let Some(path) = &tab.entry_path {
-            if self.jar_modified.contains(path) {
-                return Some(theme::ACCENT_GREEN);
-            }
+        if let Some(path) = &tab.entry_path
+            && self.jar_modified.contains(path)
+        {
+            return Some(theme::ACCENT_GREEN);
         }
         None
     }

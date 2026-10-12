@@ -63,8 +63,7 @@ pub trait SettingsFile: Serialize + DeserializeOwned + Default {
         };
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("settings.toml");
-        let content =
-            toml::to_string_pretty(self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let content = toml::to_string_pretty(self).map_err(io::Error::other)?;
         std::fs::write(&path, content)?;
         log::info!("配置已保存：{}", path.display());
         Ok(())

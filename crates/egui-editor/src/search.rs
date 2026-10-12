@@ -45,7 +45,7 @@ pub fn find_bytes(data: &[u8], query: &str, case_sensitive: bool) -> Vec<FindMat
             data[i..i + query_bytes.len()]
                 .iter()
                 .zip(query_bytes)
-                .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+                .all(|(a, b)| a.eq_ignore_ascii_case(b))
         };
         if matches {
             results.push(FindMatch {
@@ -78,7 +78,7 @@ fn find_bytes_raw(data: &[u8], pattern: &[u8]) -> Vec<FindMatch> {
 /// 尝试将查询解析为 hex 字节序列（如 "CAFEBABE" 或 "CA FE BA BE"）
 pub fn parse_hex_query(query: &str) -> Option<Vec<u8>> {
     let cleaned: String = query.chars().filter(|c| !c.is_whitespace()).collect();
-    tabookit::ensure!(!cleaned.is_empty() && cleaned.len() % 2 == 0);
+    tabookit::ensure!(!cleaned.is_empty() && cleaned.len().is_multiple_of(2));
     tabookit::ensure!(cleaned.chars().all(|c| c.is_ascii_hexdigit()));
     let bytes: Result<Vec<u8>, _> = (0..cleaned.len())
         .step_by(2)
@@ -127,15 +127,12 @@ fn is_word_boundary(text: &str, start: usize, end: usize) -> bool {
         text[..start]
             .chars()
             .next_back()
-            .map_or(true, |c| !is_word_char(c))
+            .is_none_or(|c| !is_word_char(c))
     };
     let after = if end >= text.len() {
         true
     } else {
-        text[end..]
-            .chars()
-            .next()
-            .map_or(true, |c| !is_word_char(c))
+        text[end..].chars().next().is_none_or(|c| !is_word_char(c))
     };
     before && after
 }

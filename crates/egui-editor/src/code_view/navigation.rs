@@ -64,9 +64,7 @@ pub(crate) fn detect_navigation(
         return None;
     }
     let hover_pos = ui.input(|i| i.pointer.hover_pos());
-    let Some(pos) = hover_pos else {
-        return None;
-    };
+    let pos = hover_pos?;
     // 检查鼠标是否在 galley 区域内
     let galley_rect = egui::Rect::from_min_size(output.galley_pos, output.galley.size());
     if !galley_rect.contains(pos) {
@@ -142,7 +140,7 @@ fn paint_token_underline(
         let color = span.2.color(&theme.syntax);
         ui.painter().line_segment(
             [egui::pos2(x_start, y), egui::pos2(x_end, y)],
-            egui::Stroke::new(1.0, color),
+            egui::Stroke::new(1.0_f32, color),
         );
     }
 }

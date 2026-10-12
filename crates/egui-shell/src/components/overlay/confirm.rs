@@ -176,13 +176,11 @@ tabookit::class! {
     }
 
     fn check_click_outside(ctx: &egui::Context, dialog_rect: egui::Rect) -> ConfirmResult {
-        if ctx.input(|i| i.pointer.any_pressed()) {
-            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                if !dialog_rect.contains(pos) {
+        if ctx.input(|i| i.pointer.any_pressed())
+            && let Some(pos) = ctx.input(|i| i.pointer.interact_pos())
+                && !dialog_rect.contains(pos) {
                     return ConfirmResult::Dismissed;
                 }
-            }
-        }
         ConfirmResult::None
     }
 }

@@ -139,7 +139,7 @@ tabookit::class! {
                             egui::pos2(sidebar_rect.right(), total.top()),
                             egui::pos2(sidebar_rect.right(), total.bottom()),
                         ],
-                        egui::Stroke::new(1.0, st.border),
+                        egui::Stroke::new(1.0_f32, st.border),
                     );
                     // 内容区
                     let content_left = (sidebar_rect.right() + 1.0).min(total.right());

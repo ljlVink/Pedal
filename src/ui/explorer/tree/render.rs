@@ -5,6 +5,7 @@
 //! 展开/折叠带行数渐变 + 箭头旋转动画。
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::node::TreeNode;
 use crate::appearance::{codicon, theme};
@@ -14,6 +15,40 @@ use egui_shell::components::menu_item_raw;
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::ops::Range;
+
+/// 文件树每帧的选择、过滤与修改状态。
+#[derive(Clone, Copy)]
+pub struct TreeRenderConfig<'a> {
+    pub selected: &'a Option<String>,
+    pub visible: &'a HashSet<String>,
+    pub scroll: bool,
+    pub tab_modified: &'a HashSet<String>,
+    pub jar_modified: &'a HashSet<String>,
+}
+
+/// 文件树右键菜单产生的请求。
+pub struct TreeActions<'a> {
+    pub reveal: &'a mut Option<String>,
+    pub rename: &'a mut Option<String>,
+    pub delete: &'a mut Option<String>,
+}
+
+/// 当前虚拟滚动遍历的位置与可见区间。
+struct TreeTraversal<'a> {
+    ctx: &'a egui::Context,
+    range: &'a Range<usize>,
+    counter: usize,
+}
+
+/// 单行树节点的布局和动画状态。
+struct TreeRowConfig {
+    row_idx: usize,
+    depth: u8,
+    selected: bool,
+    mod_color: Option<egui::Color32>,
+    scroll: bool,
+    openness: f32,
+}
 
 /// 根据 openness 计算有效行数
 fn effective_count(full: usize, openness: f32) -> usize {
@@ -61,16 +96,10 @@ fn count_rows(ctx: &egui::Context, nodes: &[TreeNode], visible: &HashSet<String>
 pub fn render_tree(
     ui: &mut egui::Ui,
     nodes: &mut [TreeNode],
-    selected: &Option<String>,
-    visible: &HashSet<String>,
-    reveal: &mut Option<String>,
-    rename: &mut Option<String>,
-    delete: &mut Option<String>,
-    scroll: bool,
-    tab_modified: &HashSet<String>,
-    jar_modified: &HashSet<String>,
-    decompiled_classes: Option<&HashSet<String>>,
+    config: TreeRenderConfig<'_>,
+    mut actions: TreeActions<'_>,
 ) -> Option<String> {
+    let visible = config.visible;
     ui.spacing_mut().item_spacing.y = 2.0;
     let row_h = theme::TREE_ROW_HEIGHT + 2.0;
     let ctx = ui.ctx().clone();
@@ -93,23 +122,18 @@ pub fn render_tree(
         .auto_shrink(false)
         .min_scrolled_height(ui.available_height())
         .show_rows(ui, row_h, total, |ui, range| {
-            let mut counter = 0usize;
+            let mut traversal = TreeTraversal {
+                ctx: &ctx,
+                range: &range,
+                counter: 0,
+            };
             let (click, _) = render_range(
                 ui,
-                &ctx,
                 nodes,
                 0,
-                &mut counter,
-                &range,
-                selected,
-                visible,
-                reveal,
-                rename,
-                delete,
-                scroll,
-                tab_modified,
-                jar_modified,
-                decompiled_classes,
+                &mut traversal,
+                config,
+                &mut actions,
                 usize::MAX,
             );
             clicked = click;
@@ -123,22 +147,22 @@ pub fn render_tree(
 /// 返回 (点击路径, 实际消耗行数)。
 fn render_range(
     ui: &mut egui::Ui,
-    ctx: &egui::Context,
     nodes: &mut [TreeNode],
     depth: u8,
-    counter: &mut usize,
-    range: &Range<usize>,
-    selected: &Option<String>,
-    visible: &HashSet<String>,
-    reveal: &mut Option<String>,
-    rename: &mut Option<String>,
-    delete: &mut Option<String>,
-    scroll: bool,
-    tab_modified: &HashSet<String>,
-    jar_modified: &HashSet<String>,
-    decompiled_classes: Option<&HashSet<String>>,
+    traversal: &mut TreeTraversal<'_>,
+    config: TreeRenderConfig<'_>,
+    actions: &mut TreeActions<'_>,
     max_rows: usize,
 ) -> (Option<String>, usize) {
+    let TreeRenderConfig {
+        selected,
+        visible,
+        scroll,
+        tab_modified,
+        jar_modified,
+    } = config;
+    let ctx = traversal.ctx;
+    let range = traversal.range;
     let filtering = !visible.is_empty();
     let mut clicked = None;
     let mut consumed = 0;
@@ -149,8 +173,8 @@ fn render_range(
         if filtering && !visible.contains(&node.path) {
             continue;
         }
-        let idx = *counter;
-        *counter += 1;
+        let idx = traversal.counter;
+        traversal.counter += 1;
         consumed += 1;
         // 已超过可见范围，后续节点全部跳过
         if idx >= range.end {
@@ -174,23 +198,18 @@ fn render_range(
             let (single, double) = render_row(
                 ui,
                 node,
-                idx,
-                depth,
-                is_selected,
-                mod_color,
-                decompiled_classes,
-                reveal,
-                rename,
-                delete,
-                scroll,
-                openness,
+                TreeRowConfig {
+                    row_idx: idx,
+                    depth,
+                    selected: is_selected,
+                    mod_color,
+                    scroll,
+                    openness,
+                },
+                actions,
             );
             if node.is_folder {
                 if single {
-                    node.expanded = !node.expanded;
-                }
-            } else if node.label.starts_with('$') {
-                if double {
                     node.expanded = !node.expanded;
                 }
             } else {
@@ -211,24 +230,15 @@ fn render_range(
                 let budget = (max_rows - consumed).min(effective);
                 let (path, child_consumed) = render_range(
                     ui,
-                    ctx,
                     &mut node.children,
                     depth + 1,
-                    counter,
-                    range,
-                    selected,
-                    visible,
-                    reveal,
-                    rename,
-                    delete,
-                    scroll,
-                    tab_modified,
-                    jar_modified,
-                    decompiled_classes,
+                    traversal,
+                    config,
+                    actions,
                     budget,
                 );
                 // 快进未访问的行以保持 counter 与 count_rows 一致
-                *counter += budget - child_consumed;
+                traversal.counter += budget - child_consumed;
                 consumed += budget;
                 if path.is_some() {
                     clicked = path;
@@ -239,43 +249,21 @@ fn render_range(
     (clicked, consumed)
 }
 
-/// 判断节点是否已反编译
-///
-/// `decompiled_classes` 为 None 表示全部已完成，Some 则逐个检查：
-/// - 根节点（path 为空）：始终视为已完成
-/// - 文件夹：路径在集合中（反编译线程写入类名时同时写入文件夹前缀）
-/// - class 文件：去掉 `.class` 后缀和内部类 `$` 后缀，检查外层类是否在集合中
-fn is_node_decompiled(node: &TreeNode, decompiled_classes: Option<&HashSet<String>>) -> bool {
-    let set = tabookit::or!(decompiled_classes, return true);
-    if node.path.is_empty() {
-        return true;
-    }
-    if node.is_folder {
-        return set.contains(&node.path);
-    }
-    let without_ext = node.path.strip_suffix(".class").unwrap_or(&node.path);
-    let base = match without_ext.find('$') {
-        Some(pos) => &without_ext[..pos],
-        None => without_ext,
-    };
-    set.contains(base)
-}
-
 /// 渲染一行树节点，返回 (单击, 双击)
 fn render_row(
     ui: &mut egui::Ui,
     node: &TreeNode,
-    row_idx: usize,
-    depth: u8,
-    selected: bool,
-    mod_color: Option<egui::Color32>,
-    decompiled_classes: Option<&HashSet<String>>,
-    reveal: &mut Option<String>,
-    rename: &mut Option<String>,
-    delete: &mut Option<String>,
-    scroll: bool,
-    openness: f32,
+    config: TreeRowConfig,
+    actions: &mut TreeActions<'_>,
 ) -> (bool, bool) {
+    let TreeRowConfig {
+        row_idx,
+        depth,
+        selected,
+        mod_color,
+        scroll,
+        openness,
+    } = config;
     let indent_px = 8.0 + depth as f32 * 16.0;
     let avail_w = ui.available_width();
     // 使用行索引作为位置稳定 ID，避免过滤切换内容时同一 rect 的 ID 在帧间漂移
@@ -319,23 +307,8 @@ fn render_row(
         ));
     }
     x += 12.0 + 6.0;
-    // 按节点判断是否已反编译，未完成的暗显，完成后动画过渡到正常色
-    let node_decompiled = is_node_decompiled(node, decompiled_classes);
-    let decompile_anim = Anim::new(ui, 0.35).with(&node.path);
-    let target_icon = if node_decompiled {
-        node.icon_color()
-    } else {
-        theme::TEXT_MUTED
-    };
-    let icon_color = decompile_anim.color("icon", target_icon);
-    let target_label = if let Some(c) = mod_color {
-        c
-    } else if node_decompiled {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_MUTED
-    };
-    let label_color = decompile_anim.color("label", target_label);
+    let icon_color = node.icon_color();
+    let label_color = mod_color.unwrap_or(theme::TEXT_PRIMARY);
     // 图标
     painter.text(
         egui::pos2(x + 8.0, y),
@@ -358,16 +331,16 @@ fn render_row(
         response.context_menu(|ui| {
             ui.style_mut().visuals.widgets.hovered.bg_fill = theme::BG_HOVER;
             if menu_item_raw(ui, &theme::menu_theme(), &t!("explorer.reveal"), "") {
-                *reveal = Some(node.path.clone());
+                *actions.reveal = Some(node.path.clone());
                 ui.close();
             }
             if menu_item_raw(ui, &theme::menu_theme(), &t!("explorer.rename"), "") {
-                *rename = Some(node.path.clone());
+                *actions.rename = Some(node.path.clone());
                 ui.close();
             }
             ui.separator();
             if menu_item_raw(ui, &theme::menu_theme(), &t!("explorer.delete"), "") {
-                *delete = Some(node.path.clone());
+                *actions.delete = Some(node.path.clone());
                 ui.close();
             }
         });

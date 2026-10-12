@@ -1,9 +1,9 @@
 //! 平台相关文件操作：在资源管理器中显示文件/目录
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::App;
-use pervius_java_bridge::decompiler;
 use std::path::Path;
 
 impl App {
@@ -17,6 +17,8 @@ impl App {
     }
 
     /// 处理 explorer 中右键「Reveal in Explorer」
+    ///
+    /// 归档条目没有独立的磁盘文件，显示源归档本身。
     pub(crate) fn handle_pending_reveal(&mut self) {
         let Some(entry_path) = self.layout.file_panel.pending_reveal.take() else {
             return;
@@ -24,23 +26,8 @@ impl App {
         let Some(jar) = self.workspace.jar() else {
             return;
         };
-        log::info!("Reveal: entry_path={entry_path}");
-        // class 文件：定位到缓存的反编译源码
-        if entry_path.ends_with(".class") || entry_path.contains('$') {
-            if let Some(file) = decompiler::cached_source_path(&jar.hash, &entry_path) {
-                log::info!("Reveal: found {}", file.display());
-                self.reveal_filesystem_path(&file);
-                return;
-            }
-            log::warn!("Reveal: cached source not found for {entry_path}");
-        }
-        // 缓存未命中：直接打开缓存目录
-        if let Ok(dir) = decompiler::cache_dir(&jar.hash) {
-            if dir.exists() {
-                log::info!("Reveal: fallback to dir {}", dir.display());
-                self.reveal_filesystem_path(&dir);
-            }
-        }
+        log::info!("Reveal: entry_path={entry_path} -> {}", jar.path.display());
+        self.reveal_filesystem_path(&jar.path);
     }
 }
 

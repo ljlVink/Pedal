@@ -434,7 +434,7 @@ impl Toasts {
                                 rect.min + vec2(0., toast.height),
                                 rect.max - vec2((1. - (current / initial)) * toast.width, 0.),
                             ],
-                            Stroke::new(4., visuals.fg_stroke.color),
+                            Stroke::new(4.0_f32, visuals.fg_stroke.color),
                         );
                     }
                 }

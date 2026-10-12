@@ -30,7 +30,7 @@ pub(crate) fn show(
     let avail = ui.available_rect_before_wrap();
     ui.painter().line_segment(
         [avail.left_top(), egui::pos2(avail.right(), avail.top())],
-        egui::Stroke::new(1.0, theme.border),
+        egui::Stroke::new(1.0_f32, theme.border),
     );
     // 面板
     egui::Frame::NONE

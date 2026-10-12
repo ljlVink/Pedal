@@ -1,6 +1,7 @@
 //! View 子菜单
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::MenuState;
 use crate::app::App;
@@ -13,11 +14,8 @@ use rust_i18n::t;
 pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let mt = &theme::menu_theme();
     let state = MenuState::from_app(app);
-    if menu_item_if(ui, mt, &t!("menu.decompiled"), None, state.has_tab) {
+    if menu_item_if(ui, mt, &t!("editor.view_source"), None, state.has_tab) {
         app.layout.editor.set_focused_view(ActiveView::Decompiled);
-    }
-    if menu_item_if(ui, mt, &t!("menu.bytecode"), None, state.has_tab) {
-        app.layout.editor.set_focused_view(ActiveView::Bytecode);
     }
     if menu_item_if(ui, mt, &t!("menu.hex"), None, state.has_tab) {
         app.layout.editor.set_focused_view(ActiveView::Hex);

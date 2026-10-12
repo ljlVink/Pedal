@@ -31,7 +31,7 @@ fn main() -> eframe::Result {
 ```
 
 壳子自动处理：
-- SVG logo + 标题居中渲染
+- 标题文字居中渲染
 - codicon 图标字体加载
 - 标题栏拖拽移动 / 双击最大化
 - 窗口四边四角 resize 手柄

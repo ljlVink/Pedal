@@ -1,6 +1,7 @@
 //! 文件树节点数据
 //!
 //! @author sky
+//! @author ljlVink
 
 use crate::appearance::{codicon, theme};
 use eframe::egui;
@@ -17,10 +18,6 @@ tabookit::class! {
         pub children: Vec<TreeNode>,
     }
 
-    /// 是否为 class 文件（含内部类）
-    pub fn is_class(&self) -> bool {
-        self.label.ends_with(".class") || self.label.starts_with('$')
-    }
 
     pub fn icon(&self) -> &'static str {
         if self.path.is_empty() && self.is_folder {
@@ -31,8 +28,6 @@ tabookit::class! {
             } else {
                 codicon::FOLDER
             }
-        } else if self.is_class() {
-            codicon::JAVA
         } else {
             codicon::FILE
         }
@@ -41,12 +36,6 @@ tabookit::class! {
     pub fn icon_color(&self) -> egui::Color32 {
         if self.is_folder {
             theme::ACCENT_ORANGE
-        } else if self.is_class() {
-            if self.label.starts_with('$') {
-                theme::TEXT_SECONDARY
-            } else {
-                theme::VERDIGRIS
-            }
         } else {
             theme::TEXT_SECONDARY
         }

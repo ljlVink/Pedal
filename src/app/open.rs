@@ -1,27 +1,21 @@
-//! 文件打开：JAR 加载、拖拽处理、explorer 点击、独立文件打开
+//! 文件打开：归档加载、拖拽处理、explorer 点击、独立文件打开
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::App;
-use super::decompile::spawn_decompile_start_task;
-use super::workspace::{DecompilePhase, LoadedState, LoadingState, Workspace};
-use crate::app::ConfirmAction;
+use super::ark::{self, ArkLoadingState};
+use super::workspace::{LoadedState, LoadingState, Workspace};
 use crate::task::{Poll, Pollable, Task};
 use crate::ui::editor::EditorArea;
 use crate::ui::explorer::tree;
 use eframe::egui;
 use egui_shell::components::SettingsFile;
-use pervius_java_bridge::error::BridgeError;
-use pervius_java_bridge::jar::{JarArchive, LoadProgress};
-use pervius_java_bridge::{decompiler, environment};
+use pedal_archive::error::ArchiveError;
+use pedal_archive::jar::{JarArchive, LoadProgress};
 use rust_i18n::t;
 use std::path::Path;
 use std::sync::Arc;
-
-/// 自动全量反编译的文件大小阈值（1 MB）
-const FULL_DECOMPILE_THRESHOLD: u64 = 1_000_000;
-
-type PendingDecompileStart = (String, Task<Result<decompiler::DecompileTask, BridgeError>>);
 
 impl App {
     /// 处理 explorer 中点击的文件
@@ -33,6 +27,34 @@ impl App {
         if self.layout.editor.focus_tab(&entry_path) {
             return;
         }
+        // ArkTS：.panda 反汇编条目懒生成
+        if entry_path.ends_with(".panda") {
+            let cached = {
+                let Some(loaded) = self.workspace.loaded() else {
+                    return;
+                };
+                let Some(ark) = &loaded.ark else {
+                    return;
+                };
+                ark.disasm.get(&entry_path).cloned()
+            };
+            if cached.is_none() {
+                let text = {
+                    let Some(loaded) = self.workspace.loaded_mut() else {
+                        return;
+                    };
+                    let Some(ark) = loaded.ark.as_mut() else {
+                        return;
+                    };
+                    ark.build_disasm_entry(&entry_path)
+                };
+                if let Some(text) = text
+                    && let Some(jar) = self.workspace.jar_mut()
+                {
+                    jar.put(&entry_path, text.into_bytes());
+                }
+            }
+        }
         let Some(jar) = self.workspace.jar() else {
             return;
         };
@@ -40,24 +62,8 @@ impl App {
             return;
         };
         let bytes = raw.to_vec();
-        let hash = jar.hash.as_str();
-        let is_modified = jar.is_modified(&entry_path);
-        // 已修改条目优先从 JAR 内存缓存读取反编译结果
-        let mem_cached = if is_modified {
-            jar.get_decompiled(&entry_path).cloned()
-        } else {
-            None
-        };
-        let has_cache = !is_modified && decompiler::cached_source_path(hash, &entry_path).is_some();
-        let tab = Self::create_tab(&entry_path, &bytes, Some(hash), mem_cached.as_ref());
+        let tab = Self::create_tab(&entry_path, &bytes);
         self.layout.editor.open_tab(tab);
-        if entry_path.ends_with(".class") {
-            if is_modified && mem_cached.is_none() {
-                self.decompile_class(&entry_path, bytes, false);
-            } else if !is_modified && !has_cache {
-                self.decompile_class(&entry_path, bytes, true);
-            }
-        }
     }
 
     /// 处理拖拽到窗口的文件
@@ -75,7 +81,7 @@ impl App {
         }
         ctx.data_mut(|d| d.insert_temp(cache_id, frame));
         if let Some(path) = dropped.into_iter().find_map(|file| file.path) {
-            if is_jar_file(&path) {
+            if is_jar_file(&path) || ark::is_ark_file(&path) {
                 self.request_open_jar(&path);
             } else {
                 self.open_standalone_file(&path);
@@ -83,21 +89,60 @@ impl App {
         }
     }
 
-    /// 检查后台 JAR 加载和基础资源准备是否完成
+    /// 检查后台归档加载是否完成
     pub(crate) fn check_loading(&mut self) {
         let result = {
             let Workspace::Loading(loading) = &mut self.workspace else {
                 return;
             };
-            poll_loading_result(loading)
-        };
-        let Some(result) = result else {
-            return;
+            match loading.task.poll() {
+                Poll::Ready(result) => result,
+                Poll::Pending => return,
+                Poll::Lost => Err(ArchiveError::parse("JAR loading task disconnected")),
+            }
         };
         match result {
             Ok(jar) => self.finish_loading_jar(jar),
             Err(e) => {
                 log::error!("Failed to open JAR: {e}");
+                self.toasts.error(t!("layout.open_jar_failed", error = e));
+                self.workspace = Workspace::Empty;
+            }
+        }
+    }
+
+    /// 轮询 ArkTS 工作区后台加载
+    pub(crate) fn check_ark_loading(&mut self) {
+        let (name, result) = {
+            let Workspace::ArkLoading(loading) = &mut self.workspace else {
+                return;
+            };
+
+            match loading.task.poll() {
+                Poll::Pending => return,
+                Poll::Lost => (loading.name.clone(), Err("task disconnected".to_string())),
+                Poll::Ready(r) => (loading.name.clone(), r.map_err(|e| e.to_string())),
+            }
+        };
+        match result {
+            Ok((jar, meta)) => {
+                let paths = jar.paths();
+                self.layout
+                    .file_panel
+                    .set_roots(crate::ui::explorer::tree::build_tree(&jar.name, &paths));
+                self.layout.file_panel.selected = None;
+                self.settings.add_recent(&jar.path, &jar.name);
+                if let Err(e) = self.settings.save() {
+                    log::warn!("保存最近打开记录失败: {e}");
+                }
+                let mut loaded = LoadedState::new(jar);
+                loaded.ark = Some(meta);
+                self.workspace = Workspace::Loaded(Box::new(loaded));
+                self.layout.explorer_visible = true;
+                let _ = name;
+            }
+            Err(e) => {
+                log::error!("Failed to open ArkTS file {name}: {e}");
                 self.toasts.error(t!("layout.open_jar_failed", error = e));
                 self.workspace = Workspace::Empty;
             }
@@ -110,14 +155,11 @@ impl App {
             .file_panel
             .set_roots(tree::build_tree(&jar.name, &paths));
         self.layout.file_panel.selected = None;
-        let (decompile, pending_start) = initial_decompile_state(&jar, &mut self.pending_confirm);
         self.settings.add_recent(&jar.path, &jar.name);
         if let Err(e) = self.settings.save() {
             log::warn!("保存最近打开记录失败: {e}");
         }
-        let mut loaded = LoadedState::new(jar, decompile);
-        loaded.pending_re_decompile = pending_start;
-        self.workspace = Workspace::Loaded(loaded);
+        self.workspace = Workspace::Loaded(Box::new(LoadedState::new(jar)));
         self.layout.explorer_visible = true;
     }
 
@@ -129,36 +171,17 @@ impl App {
         }
     }
 
-    /// 选择文件/目录并添加到当前会话 classpath。
-    pub fn add_classpath_dialog(&mut self) {
-        if let Some(paths) = rfd::FileDialog::new()
-            .add_filter(&*t!("layout.java_archive"), &["jar", "zip", "war", "ear"])
-            .pick_files()
-        {
-            self.add_classpath_paths(paths);
-        }
-    }
-
-    pub(crate) fn add_classpath_paths(&mut self, paths: Vec<std::path::PathBuf>) {
-        let mut added = 0;
-        for path in paths {
-            if self.add_session_classpath_entry(path) {
-                added += 1;
-            }
-        }
-        if added > 0 {
-            self.toasts
-                .success(t!("layout.classpath_added", count = added));
-        }
-    }
-
-    /// 在后台线程打开 JAR 文件
+    /// 在后台线程打开 JAR 类归档文件
     pub fn open_jar(&mut self, path: &Path) {
         // 前置检查：文件不存在时直接提示，不清空旧状态
         if !path.exists() {
             self.toasts
                 .error(t!("layout.file_not_found", path = path.display()));
             self.remove_recent(path);
+            return;
+        }
+        if ark::is_ark_file(path) {
+            self.open_ark(path);
             return;
         }
         let progress = Arc::new(LoadProgress::new());
@@ -169,34 +192,47 @@ impl App {
         let path = path.to_path_buf();
         let p = progress.clone();
         let task = Task::spawn(move || JarArchive::open_with_progress(&path, &p));
-        let resource_task = Task::spawn(environment::ensure_project_resources);
         self.layout.file_panel.roots = Vec::new();
         self.layout.file_panel.selected = None;
         self.layout.editor = EditorArea::new();
-        self.pending_decompiles.clear();
-        self.pending_compiles.clear();
         self.exporting = None;
         self.workspace = Workspace::Loading(LoadingState {
             name,
             progress,
             task,
-            jar_result: None,
-            resource_task,
-            resources_ready: false,
         });
     }
 
-    /// 打开文件选择器，返回 (路径, 是否 JAR 类文件)
+    /// 在后台线程打开 ArkTS 工作区（abc/HAP/HSP）
+    pub fn open_ark(&mut self, path: &Path) {
+        let progress = Arc::new(LoadProgress::new());
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let task = ark::spawn_open_ark(path, progress.clone());
+        self.layout.file_panel.roots = Vec::new();
+        self.layout.file_panel.selected = None;
+        self.layout.editor = EditorArea::new();
+        self.exporting = None;
+        self.workspace = Workspace::ArkLoading(ArkLoadingState {
+            name,
+            progress,
+            task,
+        });
+    }
+
+    /// 打开文件选择器，返回 (路径, 是否归档类文件)
     pub(crate) fn pick_file() -> Option<(std::path::PathBuf, bool)> {
         let jar_label = t!("layout.java_archive");
-        let class_label = t!("layout.class_file");
+        let ark_label = t!("layout.ark_archive");
         rfd::FileDialog::new()
             .add_filter(&*jar_label, &["jar", "zip", "war", "ear"])
-            .add_filter(&*class_label, &["class"])
+            .add_filter(&*ark_label, &["hap", "hsp", "abc", "har", "app"])
             .pick_file()
             .map(|path| {
-                let is_jar = is_jar_file(&path);
-                (path, is_jar)
+                let is_archive = is_jar_file(&path) || ark::is_ark_file(&path);
+                (path, is_archive)
             })
     }
 
@@ -218,7 +254,7 @@ impl App {
         }
     }
 
-    /// 打开文件对话框选择 JAR 或独立文件
+    /// 打开文件对话框选择归档或独立文件
     pub fn open_jar_dialog(&mut self) {
         if let Some((path, is_jar)) = Self::pick_file() {
             if is_jar {
@@ -229,7 +265,7 @@ impl App {
         }
     }
 
-    /// 打开独立文件（非 JAR 条目）为 tab，保存时直接写回磁盘
+    /// 打开独立文件（非归档条目）为 tab，保存时直接写回磁盘
     pub fn open_standalone_file(&mut self, path: &Path) {
         let path_str = path.to_string_lossy().to_string();
         // 已打开则聚焦
@@ -244,53 +280,10 @@ impl App {
                 return;
             }
         };
-        let mut tab = Self::create_tab(&path_str, &bytes, None, None);
+        let mut tab = Self::create_tab(&path_str, &bytes);
         tab.standalone_path = Some(path.to_path_buf());
         self.layout.editor.open_tab(tab);
-        // 独立 .class 文件触发反编译（无 JAR 上下文）
-        if path_str.ends_with(".class") {
-            self.decompile_class(&path_str, bytes, false);
-        }
     }
-}
-
-fn poll_loading_result(loading: &mut LoadingState) -> Option<Result<JarArchive, BridgeError>> {
-    poll_loading_jar(loading);
-    match poll_loading_resources(loading) {
-        Some(Ok(())) => loading.jar_result.take(),
-        Some(Err(error)) => Some(Err(error)),
-        None => None,
-    }
-}
-
-fn poll_loading_jar(loading: &mut LoadingState) {
-    if loading.jar_result.is_some() {
-        return;
-    }
-    loading.jar_result = Some(match loading.task.poll() {
-        Poll::Ready(result) => result,
-        Poll::Pending => return,
-        Poll::Lost => Err(loading_task_lost("JAR loading")),
-    });
-}
-
-fn poll_loading_resources(loading: &mut LoadingState) -> Option<Result<(), BridgeError>> {
-    if loading.resources_ready {
-        return Some(Ok(()));
-    }
-    match loading.resource_task.poll() {
-        Poll::Ready(Ok(())) => {
-            loading.resources_ready = true;
-            Some(Ok(()))
-        }
-        Poll::Ready(Err(error)) => Some(Err(error)),
-        Poll::Pending => None,
-        Poll::Lost => Some(Err(loading_task_lost("resource preparation"))),
-    }
-}
-
-fn loading_task_lost(name: &str) -> BridgeError {
-    BridgeError::Download(format!("{name} task disconnected"))
 }
 
 /// 判断路径是否为 JAR 类归档文件
@@ -300,28 +293,4 @@ fn is_jar_file(path: &Path) -> bool {
         ext.to_ascii_lowercase().as_str(),
         "jar" | "zip" | "war" | "ear"
     )
-}
-
-/// 决定 JAR 加载完成后的初始反编译阶段
-fn initial_decompile_state(
-    jar: &JarArchive,
-    pending_confirm: &mut Option<ConfirmAction>,
-) -> (DecompilePhase, Option<PendingDecompileStart>) {
-    if decompiler::is_cached(&jar.hash) {
-        log::info!("Decompiled cache hit for {}", jar.name);
-        return (DecompilePhase::Done, None);
-    }
-    if jar.file_size <= FULL_DECOMPILE_THRESHOLD {
-        return (
-            DecompilePhase::Pending,
-            Some(spawn_decompile_start_task(
-                &jar.path,
-                &jar.name,
-                &jar.hash,
-                jar.class_count(),
-            )),
-        );
-    }
-    *pending_confirm = Some(ConfirmAction::DecompileAll);
-    (DecompilePhase::Pending, None)
 }

@@ -51,24 +51,36 @@ pub(crate) fn header(ui: &mut egui::Ui, cols: &Cols, theme: &HexTheme, total_w: 
             egui::pos2(origin.x, origin.y + HEADER_H - 1.0),
             egui::pos2(origin.x + total_w, origin.y + HEADER_H - 1.0),
         ],
-        egui::Stroke::new(1.0, theme.border),
+        egui::Stroke::new(1.0_f32, theme.border),
     );
 }
-pub(crate) fn row(
-    painter: &egui::Painter,
-    cols: &Cols,
-    font: &egui::FontId,
-    origin: egui::Pos2,
-    row: usize,
-    data: &[u8],
-    state: &HexViewState,
-    hover_idx: Option<usize>,
-    hover_row: Option<usize>,
-    theme: &HexTheme,
-    content_w: f32,
-    highlights: &[(usize, usize)],
-    current_highlight: Option<usize>,
-) {
+/// 数据行的共同布局、交互和搜索高亮配置。
+pub(crate) struct HexRowConfig<'a> {
+    pub(crate) cols: &'a Cols,
+    pub(crate) font: &'a egui::FontId,
+    pub(crate) origin: egui::Pos2,
+    pub(crate) state: &'a HexViewState,
+    pub(crate) hover_idx: Option<usize>,
+    pub(crate) hover_row: Option<usize>,
+    pub(crate) theme: &'a HexTheme,
+    pub(crate) content_w: f32,
+    pub(crate) highlights: &'a [(usize, usize)],
+    pub(crate) current_highlight: Option<usize>,
+}
+
+pub(crate) fn row(painter: &egui::Painter, row: usize, data: &[u8], config: &HexRowConfig<'_>) {
+    let HexRowConfig {
+        cols,
+        font,
+        origin,
+        state,
+        hover_idx,
+        hover_row,
+        theme,
+        content_w,
+        highlights,
+        current_highlight,
+    } = *config;
     let row_offset = row * BYTES_PER_ROW;
     let row_end = (row_offset + BYTES_PER_ROW).min(data.len());
     let row_len = row_end - row_offset;
@@ -157,7 +169,7 @@ pub(crate) fn row(
     for col in 0..row_len {
         let byte_idx = row_offset + col;
         let is_cursor = state.cursor == Some(byte_idx);
-        let is_selected = sel_range.map_or(false, |(sc, ec)| col >= sc && col < ec);
+        let is_selected = sel_range.is_some_and(|(sc, ec)| col >= sc && col < ec);
         let is_hover = hover_idx == Some(byte_idx) && !is_cursor && !is_selected;
         if is_cursor || is_hover {
             let bg = if is_cursor {

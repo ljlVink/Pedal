@@ -9,7 +9,7 @@ use eframe::egui;
 /// 将窗口内 Ui 的 visuals 设置为匹配 ShellTheme 的风格
 pub(super) fn apply_style(ui: &mut egui::Ui, theme: &ShellTheme) {
     let style = ui.style_mut();
-    style.visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, theme.text_primary);
+    style.visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0_f32, theme.text_primary);
     style.visuals.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
     style.visuals.widgets.hovered.bg_fill = theme.bg_hover;
     style.visuals.widgets.active.bg_fill = theme.bg_active;

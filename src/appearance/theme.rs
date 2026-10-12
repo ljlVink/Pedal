@@ -3,6 +3,7 @@
 //! 所有 hex 值标注在注释中。
 //!
 //! @author sky
+//! @author ljlVink
 
 use eframe::egui;
 use rust_i18n::t;
@@ -122,24 +123,10 @@ pub const SEARCH_MIN_RESULTS_H: f32 = 80.0;
 pub const SEARCH_MIN_PREVIEW_H: f32 = 80.0;
 /// 搜索面板分割线拖拽手柄高度
 pub const SEARCH_RESIZE_HANDLE_H: f32 = 6.0;
-/// 字节码详情内容区内边距
-pub const BYTECODE_DETAIL_PAD: f32 = 16.0;
-/// 字节码详情 key-value 键列宽度
-pub const BYTECODE_KV_KEY_WIDTH: f32 = 100.0;
 /// 文件树行高
 pub const TREE_ROW_HEIGHT: f32 = 22.0;
 /// 文件树展开/折叠动画时长（秒）
 pub const TREE_EXPAND_DURATION: f32 = 0.12;
-/// 字节码导航项行高
-pub const BYTECODE_NAV_ROW_HEIGHT: f32 = 24.0;
-/// 字节码 section 标签行高
-pub const BYTECODE_SECTION_LABEL_HEIGHT: f32 = 28.0;
-/// 字节码导航栏最小宽度
-pub const BYTECODE_MIN_NAV_WIDTH: f32 = 120.0;
-/// 字节码导航栏最大宽度
-pub const BYTECODE_MAX_NAV_WIDTH: f32 = 500.0;
-/// 字节码导航栏拖拽手柄宽度
-pub const BYTECODE_RESIZE_HANDLE_W: f32 = 6.0;
 /// 搜索结果行高
 pub const SEARCH_ROW_HEIGHT: f32 = 24.0;
 /// 搜索分组 header 行高
@@ -179,7 +166,7 @@ pub fn window_config() -> egui_shell::WindowConfig {
         frame: egui::Frame {
             fill: BG_GUTTER,
             corner_radius: egui::CornerRadius::same(8),
-            stroke: egui::Stroke::new(1.0, BORDER),
+            stroke: egui::Stroke::new(1.0_f32, BORDER),
             inner_margin: egui::Margin::same(0),
             shadow: egui::Shadow {
                 spread: 2,
@@ -235,7 +222,7 @@ pub fn confirm_theme() -> egui_shell::components::ConfirmTheme {
     egui_shell::components::ConfirmTheme {
         frame: egui::Frame {
             fill: BG_LIGHT,
-            stroke: egui::Stroke::new(1.0, BORDER_LIGHT),
+            stroke: egui::Stroke::new(1.0_f32, BORDER_LIGHT),
             corner_radius: egui::CornerRadius::same(8),
             shadow: egui::Shadow {
                 spread: 2,
