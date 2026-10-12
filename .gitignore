@@ -1,3 +1,9 @@
 /target
 /.idea
 /ui
+*.pdf
+test_examples
+__pycache__
+scripts
+arkts_probe/entry/build/
+*_ananlysis
