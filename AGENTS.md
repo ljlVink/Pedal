@@ -41,10 +41,10 @@ No runtime dependencies - Ark bytecode parsing and decompilation are pure Rust a
 
 ## Conventions
 
-- Doc comments are Chinese; modules start with `//! <summary>` and `//! @author sky`. Follow existing files.
+- Doc comments are Chinese; new modules start with `//! <summary>` and `//! @author ljlVink`. Leave author markers in existing files unchanged.
 - Prefer `tabookit::class!` for new struct+impl definitions in app code (matches `settings.rs` et al.).
 - Use match ergonomics (`match &value` / `if let Some(x) = &value`), not `ref`/`ref mut` patterns.
-- `README.md` (English) and `README_CN.md` (Chinese) are kept in parallel; update both for user-visible changes. Crate-level `crates/*/README.md` documents each library's API - update when changing a crate's public surface.
+- `README.md` (English) and `README_CN.md` (Chinese) are kept in parallel. Update the root READMEs only when the user explicitly asks, or when a change affects installation, usage, or public documentation and needs explanation; do not update them mechanically after every feature or file change. Crate-level `crates/*/README.md` documents each library's API - update when changing a crate's public surface.
 
 ## Scripts
 
