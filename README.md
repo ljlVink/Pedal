@@ -31,26 +31,14 @@ Open any HarmonyOS artifact - `.hap` / `.hsp` / `.har` / `.app` packages or raw 
 
 <img src="screenshots/1.png" width="600" alt="Screenshot" />
 
-### Source / Disassembly Views
 
-Every ArkTS record opens as a tab with a Source / Disassembly toggle (the status-bar view switcher or `Tab`) that lazily renders the pandasm disassembly with its own syntax highlighting. `.panda` entries in the explorer open the same disassembly directly. Any entry can also be inspected in the interactive hex view.
+## Command line
 
-### Global Search
-
-`Double Shift` opens the search panel across every decompiled ArkTS source, with regex and case-sensitivity support. Results stream back grouped by record with line-level highlighted previews; double-click to jump. The index is built from the in-memory sources and never blocks the UI.
-
-<img src="screenshots/2.png" width="600" alt="Screenshot" />
-
-### Archive Browsing
-
-The left-hand resource tree lists package and archive contents and supports `hap`, `hsp`, `har`, `app`, `abc`, `jar`, `zip`, `war`, and `ear`. Type to filter (Speed Search) with filtering computed on a background thread. Entries can be renamed or deleted in place. Dropping a file onto the window opens the first dropped archive or standalone file. Recent files are also tracked.
-
-<img src="screenshots/5.png" width="600" alt="Screenshot" />
-
-### Export
-
-- **Export decompiled sources** (`Ctrl+Shift+E`) - exports pseudo-ArkTS (`.ets`) to a directory, preserving the package layout
-- **Export JAR** (`Ctrl+Shift+S`) / **Save / overwrite source archive** (`Ctrl+S`) - for regular (non-ArkTS) archives: writes in-memory modified entries back or produces a new archive. ArkTS workspaces are read-only; write-back (HAP repacking) is not supported yet.
+```bash
+pedal analyze app.hap -o out
+pedal analyze modules.abc --output out-abc
+pedal --help
+```
 
 ## Build
 

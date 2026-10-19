@@ -30,26 +30,15 @@
 
 <img src="screenshots/1.png" width="600" alt="截图" />
 
-### 源码 / 反汇编双视图
 
-每个 ArkTS record 以 tab 打开，支持 源码 / 反汇编 切换（状态栏切换器或 `Tab` 键），pandasm 反汇编按需懒生成并带专属语法高亮。资源树中的 `.panda` 条目可直接打开同一份反汇编。任意条目还可切换到交互式 Hex 视图查看原始字节。
+## 命令行
 
-### 全局搜索
+```bash
+pedal analyze app.hap -o out
+pedal analyze modules.abc --output out-abc
+pedal --help
+```
 
-`Double Shift` 打开搜索面板，覆盖所有反编译出的 ArkTS 源码，支持正则和大小写敏感。结果流式返回，按 record 分组，行级高亮预览，双击跳转。索引由内存源码构建，不阻塞 UI。
-
-<img src="screenshots/2.png" width="600" alt="截图" />
-
-### 归档浏览
-
-左侧资源树展示包与归档内容，支持 `hap` `hsp` `har` `app` `abc` `jar` `zip` `war` `ear`。键入即过滤（Speed Search），过滤计算在后台线程完成。条目支持就地重命名与删除。将文件拖到窗口会打开第一个拖入的归档或独立文件。最近文件列表也会同步维护。
-
-<img src="screenshots/5.png" width="600" alt="截图" />
-
-### 导出
-
-- **导出反编译源码**（`Ctrl+Shift+E`）- 导出伪 ArkTS（`.ets`）到指定目录，保留包结构
-- **导出 JAR**（`Ctrl+Shift+S`）/ **保存 / 覆盖源归档**（`Ctrl+S`）- 面向普通（非 ArkTS）归档：将内存中的已修改条目写回或生成新归档。ArkTS 工作区为只读，暂不支持写回（HAP 重打包）
 
 ## 构建
 

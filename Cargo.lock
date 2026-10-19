@@ -2731,6 +2731,7 @@ dependencies = [
  "egui_dock",
  "encoding_rs",
  "env_logger",
+ "image",
  "indexmap",
  "log",
  "mimalloc",
@@ -2740,9 +2741,13 @@ dependencies = [
  "rfd",
  "rust-i18n",
  "serde",
+ "serde_json",
  "sha2",
  "tabookit",
+ "tempfile",
+ "toml 0.8.23",
  "winresource",
+ "zip",
 ]
 
 [[package]]

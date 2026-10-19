@@ -30,6 +30,8 @@ fn main() -> eframe::Result {
 }
 ```
 
+`AppContent::shell_theme()` 可返回 `Some(ShellTheme)`，让外壳在每帧绘制前更新配色；默认返回 `None`，沿用 `ShellOptions.theme`。业务层可通过 `egui::Context::set_theme` 和 `set_visuals` 同步原生控件的浅色 / 深色模式。
+
 壳子自动处理：
 - 标题文字居中渲染
 - codicon 图标字体加载
@@ -104,6 +106,8 @@ if let Some(info) = bar.item_mut::<ClassInfo>() {
     info.text = "OtherClass.class".into();
 }
 ```
+
+运行期间可调用 `StatusBarWidget::set_theme(StatusBarTheme)` 更新背景和分隔线，保留已注册项目；`ProgressItem::set_color(Color32)` 可同步进度文字颜色。
 
 ### 菜单
 
