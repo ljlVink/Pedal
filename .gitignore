@@ -3,7 +3,7 @@
 /ui
 *.pdf
 test_examples
-/crates/pedal-abc-bridge/tests/fixtures/*_recovery/
+/crates/pedal-abc-bridge/tests/fixtures/
 __pycache__
 scripts
 arkts_probe/entry/build/

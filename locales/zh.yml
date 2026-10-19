@@ -1,11 +1,42 @@
 _version: 1
 
+# 命令行
+cli.help: |
+  用法：
+    pedal                              打开 GUI
+    pedal <file>                       在 GUI 中打开文件
+    pedal analyze <input> -o <dir>      无窗口导出所有 ABC record
+    pedal --help                       显示帮助
+    pedal --version                    显示版本
+
+  输入支持 .abc、.hap、.hsp、.har、.app（包括嵌套包）。
+  必须指定 -o, --output <dir>，使用新目录或空目录。
+  以 - 开头的输入前加 --，以 - 开头的输出路径前加 ./。
+  每个 ABC 使用独立编号目录；manifest.json 记录源码与原始 record 的对应关系及失败详情。
+  退出码：0 = 成功，1 = 分析或导出失败（包括部分失败），2 = 参数错误。
+cli.version: "Pedal %{version}"
+cli.unknown_option: "未知选项：%{option}"
+cli.duplicate_output: "-o / --output 只能指定一次。"
+cli.missing_output: "请通过 -o <dir> 或 --output <dir> 指定输出目录。"
+cli.missing_input: "请在 analyze 后指定输入文件。"
+cli.unexpected_argument: "多余或无效的参数：%{argument}"
+cli.complete: "已处理 %{abcs} 个 ABC，导出 %{records} 个 record，失败 %{failures} 项。清单：%{path}"
+cli.error: "错误：%{error}"
+cli.entry_failed: "处理失败：%{path}：%{error}"
+cli.processing: "正在分析第 %{count} 个 ABC：%{path}"
+cli.empty_record: "此 record 未生成源码（例如外部类型或仅含元数据的声明）。"
+cli.package_depth: "嵌套包深度超过上限 %{limit}。"
+cli.unsupported_input: "不支持的输入：%{path}。请使用 .abc、.hap、.hsp、.har 或 .app。"
+cli.output_not_empty: "输出目录非空：%{path}。请选择新目录或空目录。"
+cli.no_abc: "包内未找到 ABC 文件。"
+cli.io_error: "%{path}：%{error}"
+
 # 菜单栏
 menu.file: "文件"
 menu.edit: "编辑"
 menu.view: "视图"
 menu.help: "帮助"
-menu.open_jar: "打开 JAR..."
+menu.open_file: "打开文件..."
 menu.open_recent: "最近打开"
 menu.no_recent: "无最近文件"
 menu.clear_recent: "清除最近文件"
@@ -23,9 +54,10 @@ menu.toggle_viewport: "切换视窗模式"
 menu.about: "关于 Pedal"
 
 # About dialog
-about.description: "Java / Kotlin 反编译器、源码重编译器与字节码编辑器，内置 ArkTS（鸿蒙）反编译支持。"
+about.version: "版本 %{version}"
+about.description: "ArkTS反编译工具"
 about.license: "基于 MIT 许可证开源"
-about.close: "关闭"
+
 
 # 编辑器区域
 editor.open_file: "打开文件"
@@ -34,7 +66,14 @@ editor.double_shift: "双击 Shift"
 editor.project_view: "项目视图"
 editor.drop_hint: "拖拽文件到此处打开"
 editor.view_source: "源码"
-editor.view_disasm: "反汇编"
+editor.ark_external_record: "此条目是外部类型引用，实现不在当前 ABC 文件中。"
+editor.ark_declaration_record: "此条目仅包含元数据或成员声明，没有可反编译的方法体。"
+editor.ark_empty_source: "此条目未生成可读源码，请切换到反汇编查看字节码。"
+editor.ark_field: "字段：%{name}"
+editor.ark_method: "方法声明：%{name}"
+editor.disasm_loading: "正在生成反汇编…"
+editor.disasm_failed: "反汇编生成失败。"
+editor.view_disasm: "Panda"
 editor.close: "关闭"
 editor.close_others: "关闭其他"
 editor.close_to_right: "关闭右侧"
@@ -74,7 +113,7 @@ search.select_preview: "选择一个结果以预览"
 search.matches: "%{count} 个匹配"
 search.summary: "%{matches} 个结果，%{files} 个文件"
 search.truncated: "（显示前 %{max} 条）"
-search.no_jar: "打开 JAR 文件后可搜索"
+search.no_jar: "打开文件后可搜索"
 search.building_index: "正在构建搜索索引..."
 search.type_to_search: "输入关键词搜索..."
 search.searching: "搜索中..."
@@ -83,13 +122,16 @@ search.searching: "搜索中..."
 settings.title: "设置"
 settings.general: "通用"
 settings.keymap: "快捷键"
+settings.theme: "主题"
+settings.theme_light: "浅色"
+settings.theme_dark: "深色"
 settings.language: "语言"
 settings.open_behavior: "打开项目方式"
 settings.open_behavior_current: "当前窗口"
 settings.open_behavior_new: "新窗口"
 settings.open_behavior_ask: "每次询问"
 settings.section_general: "通用"
-settings.open_jar: "打开 JAR"
+settings.open_file: "打开文件"
 settings.toggle_explorer: "切换资源管理器"
 settings.open_settings: "打开设置"
 settings.section_editor: "编辑器"
@@ -131,7 +173,7 @@ layout.save_source_complete: "已覆盖源文件 %{path}（%{count} 个条目，
 layout.save_source_failed: "保存源文件失败：%{error}"
 layout.export_failed: "导出失败：%{error}"
 layout.open_file_failed: "打开文件失败：%{error}"
-layout.open_jar_failed: "打开 JAR 失败：%{error}"
+layout.open_jar_failed: "打开文件失败：%{error}"
 layout.file_not_found: "文件不存在：%{path}"
 layout.write_file_failed: "写入文件失败：%{error}"
 layout.spawn_window_failed: "启动新窗口失败：%{error}"

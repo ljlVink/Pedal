@@ -1,11 +1,42 @@
 _version: 1
 
+# Command line
+cli.help: |
+  Usage:
+    pedal                              Open the GUI
+    pedal <file>                       Open a file in the GUI
+    pedal analyze <input> -o <dir>      Export all ABC records without opening a window
+    pedal --help                       Show this help
+    pedal --version                    Show the version
+
+  Input: .abc, .hap, .hsp, .har, .app (including nested packages).
+  -o, --output <dir> is required; use a new or empty directory.
+  Use -- before an input beginning with '-', and ./ before an output beginning with '-'.
+  Each ABC gets a numbered directory. manifest.json maps sources to original records and lists failures.
+  Exit codes: 0 = success, 1 = analysis/export failure (including partial results), 2 = invalid arguments.
+cli.version: "Pedal %{version}"
+cli.unknown_option: "Unknown option: %{option}"
+cli.duplicate_output: "Specify -o / --output only once."
+cli.missing_output: "Specify an output directory with -o <dir> or --output <dir>."
+cli.missing_input: "Specify an input file after analyze."
+cli.unexpected_argument: "Unexpected argument: %{argument}"
+cli.complete: "Processed %{abcs} ABC file(s), exported %{records} record(s), %{failures} failure(s). Manifest: %{path}"
+cli.error: "Error: %{error}"
+cli.entry_failed: "Failed: %{path}: %{error}"
+cli.processing: "Analyzing ABC %{count}: %{path}"
+cli.empty_record: "This record has no generated source (for example, an external type or metadata-only declaration)."
+cli.package_depth: "Nested package depth exceeds the limit of %{limit}."
+cli.unsupported_input: "Unsupported input: %{path}. Expected .abc, .hap, .hsp, .har or .app."
+cli.output_not_empty: "Output directory is not empty: %{path}. Choose a new or empty directory."
+cli.no_abc: "No ABC files were found in this package."
+cli.io_error: "%{path}: %{error}"
+
 # Menu bar
 menu.file: "File"
 menu.edit: "Edit"
 menu.view: "View"
 menu.help: "Help"
-menu.open_jar: "Open JAR..."
+menu.open_file: "Open File..."
 menu.open_recent: "Open Recent"
 menu.no_recent: "No Recent Files"
 menu.clear_recent: "Clear Recent Files"
@@ -23,9 +54,10 @@ menu.toggle_viewport: "Toggle Viewport Mode"
 menu.about: "About Pedal"
 
 # About dialog
-about.description: "Java / Kotlin decompiler, source recompiler, and bytecode editor with built-in ArkTS (HarmonyOS) decompilation."
+about.version: "Version %{version}"
+about.description: "An ArkTS decompiler."
 about.license: "Open source under the MIT License"
-about.close: "Close"
+
 
 # Editor area
 editor.open_file: "Open File"
@@ -34,6 +66,13 @@ editor.double_shift: "Double Shift"
 editor.project_view: "Project View"
 editor.drop_hint: "Drop files here to open them"
 editor.view_source: "Source"
+editor.ark_external_record: "This entry references an external type; its implementation is not in this ABC file."
+editor.ark_declaration_record: "This entry contains only metadata or member declarations, with no method bodies to decompile."
+editor.ark_empty_source: "No readable source was generated for this entry. Switch to Disassembly to inspect its bytecode."
+editor.ark_field: "Field: %{name}"
+editor.ark_method: "Method declaration: %{name}"
+editor.disasm_loading: "Generating disassembly…"
+editor.disasm_failed: "Disassembly generation failed."
 editor.view_disasm: "Disassembly"
 editor.close: "Close"
 editor.close_others: "Close Others"
@@ -74,7 +113,7 @@ search.select_preview: "Select a result to preview"
 search.matches: "%{count} matches"
 search.summary: "%{matches} results in %{files} files"
 search.truncated: "(showing first %{max})"
-search.no_jar: "Open a JAR file to search"
+search.no_jar: "Open a file to search"
 search.building_index: "Building search index..."
 search.type_to_search: "Type to search..."
 search.searching: "Searching..."
@@ -83,13 +122,16 @@ search.searching: "Searching..."
 settings.title: "Settings"
 settings.general: "General"
 settings.keymap: "Keymap"
+settings.theme: "Theme"
+settings.theme_light: "Light"
+settings.theme_dark: "Dark"
 settings.language: "Language"
 settings.open_behavior: "Open Project In"
 settings.open_behavior_current: "Current Window"
 settings.open_behavior_new: "New Window"
 settings.open_behavior_ask: "Ask Every Time"
 settings.section_general: "GENERAL"
-settings.open_jar: "Open JAR"
+settings.open_file: "Open File"
 settings.toggle_explorer: "Toggle Explorer"
 settings.open_settings: "Open Settings"
 settings.section_editor: "EDITOR"
@@ -131,7 +173,7 @@ layout.save_source_complete: "Overwrote source file %{path} (%{count} entries, %
 layout.save_source_failed: "Failed to save source file: %{error}"
 layout.export_failed: "Export failed: %{error}"
 layout.open_file_failed: "Failed to open file: %{error}"
-layout.open_jar_failed: "Failed to open JAR: %{error}"
+layout.open_jar_failed: "Failed to open file: %{error}"
 layout.file_not_found: "File not found: %{path}"
 layout.write_file_failed: "Failed to write file: %{error}"
 layout.spawn_window_failed: "Failed to open new window: %{error}"
