@@ -3,12 +3,11 @@
 
 use pedal_abc_bridge::{decompile, file::AbcFile};
 
-const FIXTURES: &[(&str, &[u8])] = &[
-    ("debug", include_bytes!("fixtures/object_methods/debug.abc")),
-    (
-        "release",
-        include_bytes!("fixtures/object_methods/release.abc"),
-    ),
+use super::common;
+
+const FIXTURES: &[(&str, &str)] = &[
+    ("debug", "object_methods/debug.abc"),
+    ("release", "object_methods/release.abc"),
 ];
 
 const METHODS: &[&str] = &[
@@ -32,8 +31,8 @@ fn has_lex_fallback(source: &str) -> bool {
 
 #[test]
 fn compiler_object_methods_are_embedded_once_and_capture_the_outer_parameter() {
-    for (mode, bytes) in FIXTURES {
-        let file = AbcFile::parse(bytes.to_vec()).expect("compiler fixture parses");
+    for (mode, path) in FIXTURES {
+        let file = AbcFile::parse(common::read_fixture(path)).expect("compiler fixture parses");
         let record = file
             .classes
             .iter()

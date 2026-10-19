@@ -1,6 +1,6 @@
-//! 端到端集成测试：真实 abc / HAP 语料（缺失时自动跳过）
+//! 端到端集成测试：真实 abc / HAP 可选语料。
 //!
-//! 语料目录不入库，CI 上自动 skip；本地存在时验证：
+//! 默认忽略；显式运行时要求所需语料存在，验证：
 //! - 容器解析（12.x 与 0.1.0.7 两代布局）
 //! - 指令解码覆盖率
 //! - 反编译产物非空且包含函数或类声明
@@ -11,17 +11,6 @@ use pedal_abc_bridge::decompile;
 use pedal_abc_bridge::disasm;
 use pedal_abc_bridge::file::{AbcFile, HeaderKind};
 use pedal_abc_bridge::hap::HapArchive;
-use std::path::Path;
-
-const CORPUS: &str = "test_examples";
-
-fn corpus_dir() -> Option<std::path::PathBuf> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(CORPUS);
-    dir.exists().then(|| dir.to_path_buf())
-}
-
 fn decode_coverage(file: &AbcFile) -> (usize, usize) {
     let legacy = file.header.kind == HeaderKind::Legacy;
     let mut total = 0;
@@ -39,12 +28,9 @@ fn decode_coverage(file: &AbcFile) -> (usize, usize) {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn modern_abc_from_hap_parses_and_decodes() {
-    let Some(dir) = corpus_dir() else { return };
-    let hap_path = dir.join("AppGallery/service.hap");
-    if !hap_path.exists() {
-        return;
-    }
+    let hap_path = super::corpus_path("AppGallery/service.hap");
     let data = std::fs::read(&hap_path).unwrap();
     let hap = HapArchive::parse(data).unwrap();
     let abc_entry = hap.main_abc().expect("modules.abc present");
@@ -58,12 +44,9 @@ fn modern_abc_from_hap_parses_and_decodes() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn modern_abc_decompiles_records() {
-    let Some(dir) = corpus_dir() else { return };
-    let hap_path = dir.join("AppGallery/service.hap");
-    if !hap_path.exists() {
-        return;
-    }
+    let hap_path = super::corpus_path("AppGallery/service.hap");
     let hap = HapArchive::parse(std::fs::read(&hap_path).unwrap()).unwrap();
     let bytes = hap.read_entry(hap.main_abc().unwrap()).unwrap();
     let file = AbcFile::parse(bytes).unwrap();
@@ -81,12 +64,9 @@ fn modern_abc_decompiles_records() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn appgallery_widget_constructor_marks_erased_types_and_arkui_hints() {
-    let Some(dir) = corpus_dir() else { return };
-    let path = dir.join("AppGallery/entry.hap");
-    if !path.exists() {
-        return;
-    }
+    let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
     let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
     let record = file.classes.iter().find(|record| record.name == "L&@hw-ae-presentation/entry-har/src/main/ets/widget/pages/HarWidgetCard&7.2.1-100;").unwrap();
@@ -111,12 +91,9 @@ fn appgallery_widget_constructor_marks_erased_types_and_arkui_hints() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn appgallery_analytics_constants_recover_all_72_static_values() {
-    let Some(dir) = corpus_dir() else { return };
-    let path = dir.join("AppGallery/entry.hap");
-    if !path.exists() {
-        return;
-    }
+    let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
     let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
     let record = file
@@ -138,12 +115,9 @@ fn appgallery_analytics_constants_recover_all_72_static_values() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn appgallery_download_key_resolver_initializes_register_declarations() {
-    let Some(dir) = corpus_dir() else { return };
-    let path = dir.join("AppGallery/@hw-ae-business+download-install-default.hsp");
-    if !path.exists() {
-        return;
-    }
+    let path = super::corpus_path("AppGallery/@hw-ae-business+download-install-default.hsp");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
     let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
     let record = file
@@ -175,12 +149,9 @@ fn appgallery_download_key_resolver_initializes_register_declarations() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn appgallery_entry_property_tables_rest_callbacks_and_object_methods_recover() {
-    let Some(dir) = corpus_dir() else { return };
-    let path = dir.join("AppGallery/entry.hap");
-    if !path.exists() {
-        return;
-    }
+    let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
     let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
     for fragment in [
@@ -226,12 +197,9 @@ fn appgallery_entry_property_tables_rest_callbacks_and_object_methods_recover() 
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn legacy_abc_parses_and_mostly_decodes() {
-    let Some(dir) = corpus_dir() else { return };
-    let abc_path = dir.join("system_framework/crypto_framework_ets.abc");
-    if !abc_path.exists() {
-        return;
-    }
+    let abc_path = super::corpus_path("system_framework/crypto_framework_ets.abc");
     let file = AbcFile::parse(std::fs::read(&abc_path).unwrap()).unwrap();
     assert_eq!(file.header.kind, HeaderKind::Legacy);
     assert!(
@@ -249,12 +217,9 @@ fn legacy_abc_parses_and_mostly_decodes() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn appgallery_about_sheet_recovers_imported_base_and_implicit_constructor() {
-    let Some(dir) = corpus_dir() else { return };
-    let path = dir.join("AppGallery/entry.hap");
-    if !path.exists() {
-        return;
-    }
+    let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
     let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
     let record = file
@@ -289,12 +254,9 @@ fn appgallery_about_sheet_recovers_imported_base_and_implicit_constructor() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn hap_listing_categorizes_entries() {
-    let Some(dir) = corpus_dir() else { return };
-    let hap_path = dir.join("Hinote/HiNote.hap");
-    if !hap_path.exists() {
-        return;
-    }
+    let hap_path = super::corpus_path("Hinote/HiNote.hap");
     let hap = HapArchive::parse(std::fs::read(&hap_path).unwrap()).unwrap();
     assert!(hap.entries.iter().any(|e| e.is_abc));
     assert!(hap.entries.iter().any(|e| e.is_so));
@@ -302,14 +264,11 @@ fn hap_listing_categorizes_entries() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn hinote_logutil_lifts_globals_and_lexvars() {
     // 回归：tryldglobalbyname 未实现 / ldlexvar 误写寄存器时，
     // LogUtil 会渲染成 undefined.info(...) 且操作数串位
-    let Some(dir) = corpus_dir() else { return };
-    let hap_path = dir.join("Hinote/HiNote.hap");
-    if !hap_path.exists() {
-        return;
-    }
+    let hap_path = super::corpus_path("Hinote/HiNote.hap");
     let hap = HapArchive::parse(std::fs::read(&hap_path).unwrap()).unwrap();
     let bytes = hap.read_entry(hap.main_abc().unwrap()).unwrap();
     let file = AbcFile::parse(bytes).unwrap();
@@ -336,12 +295,9 @@ fn hinote_logutil_lifts_globals_and_lexvars() {
 }
 
 #[test]
+#[ignore = "requires optional test_examples corpus; see tests/README.md"]
 fn hinote_diagnostic_records_recover_module_class_and_private_instructions() {
-    let Some(dir) = corpus_dir() else { return };
-    let path = dir.join("Hinote/HiNote.hap");
-    if !path.exists() {
-        return;
-    }
+    let path = super::corpus_path("Hinote/HiNote.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
     let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
     let (decoded, total) = decode_coverage(&file);

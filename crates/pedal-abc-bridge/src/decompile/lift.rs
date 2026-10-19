@@ -3683,9 +3683,7 @@ mod async_tests {
             "advanced_recovery/debug.abc",
             "advanced_recovery/release.abc",
         ] {
-            let Some(bytes) = read_fixture(path) else {
-                continue;
-            };
+            let bytes = read_fixture(path);
             let file = AbcFile::parse(bytes).unwrap();
             for name in [
                 "awaitSuccess",
@@ -3717,9 +3715,7 @@ mod async_tests {
 
     #[test]
     fn altered_resume_mode_uses_complete_raw_fallback() {
-        let Some(bytes) = read_fixture("advanced_recovery/debug.abc") else {
-            return;
-        };
+        let bytes = read_fixture("advanced_recovery/debug.abc");
         let mut file = AbcFile::parse(bytes).unwrap();
         let class = file
             .classes
@@ -3758,9 +3754,7 @@ mod async_tests {
 
     #[test]
     fn finally_recognition_requires_the_internal_hole_sentinel() {
-        let Some(bytes) = read_fixture("advanced_recovery/debug.abc") else {
-            return;
-        };
+        let bytes = read_fixture("advanced_recovery/debug.abc");
         let file = AbcFile::parse(bytes).unwrap();
         let method = file
             .classes

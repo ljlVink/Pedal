@@ -7,8 +7,8 @@ Pedal - ArkTS (HarmonyOS `.abc`/HAP) decompiler and archive viewer. Rust 2024 ed
 ```bash
 cargo build --release          # build everything (default workflow; CI builds the same way)
 cargo run --release            # run the app
-cargo test                     # workspace tests (tabookit macros, egui-editor highlight, vendored patch crates; abc-bridge corpus tests skip unless test_examples/ exists)
-cargo fmt && cargo clippy      # keep clean; no CI gate enforces this - release CI only builds on tags
+cargo test --workspace --locked # all owned workspace tests; optional large-corpus tests are reported as ignored
+cargo fmt && cargo clippy      # keep clean; test CI runs on pushes/PRs, release CI builds on tags
 ```
 
 Linux build deps: `libxkbcommon-dev libwayland-dev libwayland-egl-backend-dev libasound2-dev`.
@@ -41,13 +41,20 @@ No runtime dependencies - Ark bytecode parsing and decompilation are pure Rust a
 
 ## Conventions
 
-- Doc comments are Chinese; new modules start with `//! <summary>` and `//! @author ljlVink`. Leave author markers in existing files unchanged.
+- Doc comments are Chinese; new modules start with `//! <summary>` and `//! @author ljlVink`. Any author marker in a new file (including scripts) uses `ljlVink`. Leave author markers in existing files unchanged.
 - Prefer `tabookit::class!` for new struct+impl definitions in app code (matches `settings.rs` et al.).
 - Use match ergonomics (`match &value` / `if let Some(x) = &value`), not `ref`/`ref mut` patterns.
 - `README.md` (English) and `README_CN.md` (Chinese) are kept in parallel. Update the root READMEs only when the user explicitly asks, or when a change affects installation, usage, or public documentation and needs explanation; do not update them mechanically after every feature or file change. Crate-level `crates/*/README.md` documents each library's API - update when changing a crate's public surface.
 
 ## Scripts
 
-`scripts/` and `test_examples/` are **gitignored local assets** - present in the working tree but not tracked; a fresh clone has neither.
+`scripts/gen_isa.py` and `scripts/gen_isa_legacy.py` are tracked ISA development tools; other local research scripts remain ignored. `test_examples/` remains an ignored, optional large corpus.
 
-`gen_isa.py` / `gen_isa_legacy.py` - regenerate the pedal-abc-bridge ISA tables (see that crate's README).
+## Tests
+
+See `tests/README.md` for commands, layout and required optional-corpus filenames. `cargo test` at the root only tests the app package; use `cargo test --workspace --locked` for the complete owned workspace. Vendored patch crates are not workspace test members.
+
+- Keep private unit tests beside their implementation; bridge integration tests live under `crates/pedal-abc-bridge/tests/regression/`.
+- Small `tests/fixtures/` ABCs, source probes and regeneration/comparison scripts are tracked. Missing required fixtures must fail, never silently skip. Normal tests need neither the SDK nor Node.
+- Put large-corpus tests under `crates/pedal-abc-bridge/tests/corpus/`, with an explicit `#[ignore = "..."]` reason. Run them with `cargo test -p pedal-abc-bridge --test corpus -- --ignored`; a selected test with missing input must fail with its path.
+- Keep test-specific instructions in `tests/README.md` and fixture READMEs; routine test maintenance does not require root README changes.

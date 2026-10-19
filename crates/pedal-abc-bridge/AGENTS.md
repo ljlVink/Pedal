@@ -59,15 +59,19 @@ without opening every archive tab manually.
 
 ## Tests
 
-`tests/corpus.rs` runs end-to-end against `test_examples/` when present (skipped
-otherwise): modern abc parses + decodes 100% of methods, records decompile to
-pseudo ArkTS, legacy abc parses with ≥80% decode coverage, HAP listings are
-classified.
+Use `cargo test -p pedal-abc-bridge --locked` for unit tests and the default
+`tests/regression/` target. Small ABCs, TS/ETS sources and developer scripts under
+`tests/fixtures/` are tracked. `tests/common/mod.rs` reads required fixtures;
+missing or invalid inputs fail. No SDK, Node or application corpus is required.
 
-`tests/fixtures/*_recovery/` contains gitignored local SDK fixtures. Integration
-and unit tests load them at runtime through `tests/common/mod.rs`; a missing file
-skips only its dependent checks (visible with `-- --nocapture`). Other read errors
-and invalid bytecode still fail. Synthetic bytecode tests run without the fixtures.
+`tests/corpus/` is the separate optional large-corpus target. Every case is marked
+`#[ignore]`, even when `test_examples/` exists locally. Run it explicitly with
+`cargo test -p pedal-abc-bridge --test corpus -- --ignored`; selected cases fail
+with the required path when input is missing. Keep all new large-corpus tests in
+this target rather than in default regression or unit tests.
+
+See the workspace `tests/README.md` and `tests/fixtures/README.md` in this crate
+for directory ownership, commands, regeneration and optional Node comparisons.
 
 ## Source readability and correctness
 
@@ -192,7 +196,7 @@ repeatable allocations remain conservative. For-in enumerates inherited keys,
 and pending calls are flushed before loop transfers. New-object apply checks the
 array operand and reads it by index through Reflect.construct.
 
-`tests/hinote_recovery.rs` and its SDK fixtures cover these operations; the adjacent
+`tests/regression/hinote_recovery.rs` and its SDK fixtures cover these operations; the adjacent
 Node comparison checks private isolation/branding, accessor behavior, inherited
 enumeration, per-iteration calls and asynchronous completion. Synthetic tests also
 cover sixteen-bit module indices, Sendable import slots and unknown private layouts.
@@ -209,11 +213,11 @@ and the
 [OpenHarmony literal accessor](https://github.com/openharmony/arkcompiler_runtime_core/blob/master/libpandafile/literal_data_accessor-inl.h).
 The implementation remains in-process Rust.
 
-`tests/readability.rs` uses self-contained synthetic bytecode, so these regressions
-run even without the ignored corpus. `tests/corpus.rs` resolves the optional corpus
+`tests/regression/readability.rs` uses self-contained synthetic bytecode, so these regressions
+run even without the ignored corpus. `tests/corpus/` resolves the optional corpus
 relative to the workspace root, including when invoked by Cargo from this crate.
 
-`tests/advanced_recovery.rs` uses optional local debug/release ABC fixtures compiled by
+`tests/regression/advanced_recovery.rs` uses tracked debug/release ABC fixtures compiled by
 the real SDK; normal Cargo tests do not require the SDK or Node. The adjacent
 fixture README documents regeneration and optional Node differential tests against
 the original source, including rejection injection and ArkUI host stubs. The latter
@@ -226,11 +230,11 @@ cargo run -p pedal-abc-bridge --example export_record -- input.abc RecordName ou
 The `dump` example also accepts `ARK_DISASM_METHOD` to select a method by name, or
 `ARK_DISASM_AT` to select an exact hexadecimal offset.
 
-`tests/property_recovery.rs` uses optional local SDK debug/release fixtures for computed and
+`tests/regression/property_recovery.rs` uses tracked SDK debug/release fixtures for computed and
 indexed properties, function names, descriptor copies, deep object methods, more
 than twelve methods, and async rest parameters. Its fixture README describes
 optional Node behavior checks; accumulator and operand-order checks also run on
-synthetic bytecode in `tests/readability.rs`.
+synthetic bytecode in `tests/regression/readability.rs`.
 
 Additional references: [JD's class/dependency analysis](https://github.com/jd-opensource/arkdecompiler),
 [PANDA debug data](https://github.com/openharmony/arkcompiler_runtime_core/blob/master/libpandafile/debug_data_accessor-inl.h),

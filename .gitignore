@@ -2,9 +2,12 @@
 /.idea
 /ui
 *.pdf
-test_examples
-/crates/pedal-abc-bridge/tests/fixtures/
+# Optional, large application/framework corpus; small tests/fixtures are tracked.
+/test_examples/
 __pycache__
-scripts
+# Keep local research utilities private; ship the generators used by this project.
+/scripts/*
+!/scripts/gen_isa.py
+!/scripts/gen_isa_legacy.py
 arkts_probe/entry/build/
 *analysis

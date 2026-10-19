@@ -3,7 +3,7 @@
 
 use pedal_abc_bridge::{decompile, disasm, file::AbcFile};
 
-mod common;
+use super::common;
 
 const FIXTURES: &[(&str, &str)] = &[
     ("debug", "namespace_recovery/debug.abc"),
@@ -56,9 +56,7 @@ fn assert_namespace(mode: &str, source: &str) {
 #[test]
 fn namespace_compiler_fixtures_decode_every_method() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes).unwrap();
         let methods = &record(&file).methods;
         assert_eq!(
@@ -77,9 +75,7 @@ fn namespace_compiler_fixtures_decode_every_method() {
 #[test]
 fn namespaces_preserve_private_captures_async_export_and_two_closure_instances() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes).unwrap();
         let source = decompile::decompile_record(&file, record(&file))
             .unwrap()
@@ -91,9 +87,7 @@ fn namespaces_preserve_private_captures_async_export_and_two_closure_instances()
 #[test]
 fn production_style_namespace_names_do_not_trigger_legacy_class_synthesis() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes).unwrap();
         let mut namespace = record(&file).clone();
         // SDK 26 的匿名函数名使用哈希；生产语料的旧编译器把 namespace

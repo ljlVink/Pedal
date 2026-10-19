@@ -4,7 +4,7 @@
 use decompile::lift::{Expr, Stmt, has_effect};
 use pedal_abc_bridge::{decompile, file::AbcFile};
 
-mod common;
+use super::common;
 
 #[test]
 fn coercing_operations_are_effectful_even_for_register_operands() {
@@ -76,9 +76,7 @@ fn compiler_fixtures_keep_discarded_coercion_inside_protected_loop() {
         ("debug", "coercion_recovery/debug.abc"),
         ("release", "coercion_recovery/release.abc"),
     ] {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes).unwrap();
         let record = file
             .classes

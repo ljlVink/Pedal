@@ -300,9 +300,7 @@ fn sdk_concurrent_fixtures_restore_directive_before_locals_and_all_notifications
         "advanced_recovery/concurrent-debug.abc",
         "advanced_recovery/concurrent-release.abc",
     ] {
-        let Some(bytes) = crate::test_support::read_fixture(path) else {
-            continue;
-        };
+        let bytes = crate::test_support::read_fixture(path);
         let file = crate::file::AbcFile::parse(bytes).unwrap();
         let record = file
             .classes
@@ -347,10 +345,7 @@ fn sdk_concurrent_fixtures_restore_directive_before_locals_and_all_notifications
 
 #[test]
 fn concurrent_function_metadata_does_not_hide_verified_async_modifier() {
-    let Some(bytes) = crate::test_support::read_fixture("advanced_recovery/concurrent-release.abc")
-    else {
-        return;
-    };
+    let bytes = crate::test_support::read_fixture("advanced_recovery/concurrent-release.abc");
     let mut file = crate::file::AbcFile::parse(bytes).unwrap();
     for method in file
         .classes

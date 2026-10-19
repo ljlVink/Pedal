@@ -3,14 +3,12 @@
 
 use pedal_abc_bridge::{decompile, file::AbcFile};
 
-mod common;
+use super::common;
 
 #[test]
 fn sdk_private_fields_nested_classes_and_async_closures_recover() {
     for path in ["hinote_recovery/debug.abc", "hinote_recovery/release.abc"] {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes).unwrap();
         let record = file
             .classes

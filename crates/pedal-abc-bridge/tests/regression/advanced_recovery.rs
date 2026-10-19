@@ -1,11 +1,11 @@
 //! 真实编译器生成的异步、异常及类归属回归测试。
 //!
-//! 小型 ABC 仅保存在本地；缺失时跳过，无需本地 SDK、Node 或 test_examples。
+//! 小型 ABC 随仓库提交；缺失即失败，无需本地 SDK、Node 或 test_examples。
 //! @author ljlVink
 
 use pedal_abc_bridge::{decompile, disasm, file::AbcFile};
 
-mod common;
+use super::common;
 
 const FIXTURES: &[(&str, &str)] = &[
     ("debug", "advanced_recovery/debug.abc"),
@@ -51,11 +51,9 @@ fn declaration<'a>(source: &'a str, prefix: &str) -> &'a str {
 }
 
 #[test]
-fn local_compiler_fixtures_decode_every_method() {
+fn compiler_fixtures_decode_every_method() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes).expect("compiler fixture parses");
         let mut count = 0;
         for method in file.classes.iter().flat_map(|record| &record.methods) {
@@ -72,9 +70,7 @@ fn local_compiler_fixtures_decode_every_method() {
 #[test]
 fn async_methods_restore_await_without_vm_resume_scaffolding() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let source = source(&bytes);
         for name in [
             "awaitSuccess",
@@ -104,9 +100,7 @@ fn async_methods_restore_await_without_vm_resume_scaffolding() {
 #[test]
 fn return_override_and_nested_finalizers_remain_structured() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let source = source(&bytes);
         let override_body = declaration(&source, "async function finallyOverridesReturn(");
         let finalizer = declaration(override_body, "finally {");
@@ -124,9 +118,7 @@ fn return_override_and_nested_finalizers_remain_structured() {
 #[test]
 fn awaiting_loop_retains_loop_and_finalizer() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let source = source(&bytes);
         let body = declaration(&source, "async function awaitLoop(");
         assert!(
@@ -141,9 +133,7 @@ fn awaiting_loop_retains_loop_and_finalizer() {
 #[test]
 fn duplicate_members_belong_to_their_own_classes() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let source = source(&bytes);
         let base = declaration(&source, "class RecoveryBase");
         let child = declaration(&source, "class RecoveryChild extends RecoveryBase");
@@ -161,9 +151,7 @@ fn duplicate_members_belong_to_their_own_classes() {
 
 #[test]
 fn debug_parameters_and_owned_capture_names_survive_compilation() {
-    let Some(bytes) = common::read_fixture(FIXTURES[0].1) else {
-        return;
-    };
+    let bytes = common::read_fixture(FIXTURES[0].1);
     let source = source(&bytes);
     assert!(source.contains("async function awaitSuccess(value, trace)"));
     assert!(source.contains("async function awaitLoop(count, trace)"));
@@ -177,9 +165,7 @@ fn debug_parameters_and_owned_capture_names_survive_compilation() {
 #[test]
 fn returned_closures_and_module_exports_remain_executable_expressions() {
     for (mode, path) in FIXTURES {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let source = source(&bytes);
         let closure = declaration(&source, "function closureNames(");
         assert!(closure.contains("return () => {"), "{mode}:\n{closure}");
@@ -201,9 +187,7 @@ fn arkui_component_keeps_all_members_and_valid_constructor_order() {
         ("release", "advanced_recovery/arkui-release.abc"),
     ];
     for (mode, path) in fixtures {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let source = source_record(&bytes, "ArkUIProbe");
         let page = declaration(&source, "class ProbePage extends globalThis.ViewPU");
         for member in [
@@ -274,9 +258,7 @@ fn compiler_property_definitions_recover_fields_and_preserve_dynamic_descriptors
         "advanced_recovery/properties-debug.abc",
         "advanced_recovery/properties-release.abc",
     ] {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes.to_vec()).unwrap();
         let definitions = file
             .classes
@@ -315,9 +297,7 @@ fn imported_classes_keep_inheritance_members_and_spread_constructors() {
         "advanced_recovery/inheritance-debug.abc",
         "advanced_recovery/inheritance-release.abc",
     ] {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let source = source_record(&bytes, "ImportedInheritance");
         for (name, base) in [
             ("ImportedSheet", "ImportedBase"),

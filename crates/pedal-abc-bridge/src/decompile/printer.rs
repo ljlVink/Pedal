@@ -2486,9 +2486,7 @@ mod tests {
     #[test]
     fn real_proto_types_reach_functions_arrows_and_bodyless_declarations() {
         let r = renderer(true);
-        let Some(bytes) = crate::test_support::read_fixture("advanced_recovery/debug.abc") else {
-            return;
-        };
+        let bytes = crate::test_support::read_fixture("advanced_recovery/debug.abc");
         let mut file = AbcFile::parse(bytes).unwrap();
         let mut method = file
             .classes
@@ -2557,9 +2555,7 @@ mod tests {
     #[test]
     fn unknown_proto_arity_never_misaligns_parameter_types() {
         let r = renderer(true);
-        let Some(bytes) = crate::test_support::read_fixture("advanced_recovery/debug.abc") else {
-            return;
-        };
+        let bytes = crate::test_support::read_fixture("advanced_recovery/debug.abc");
         let mut file = AbcFile::parse(bytes).unwrap();
         let mut method = file
             .classes

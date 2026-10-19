@@ -3,7 +3,7 @@
 
 use pedal_abc_bridge::{decompile, file::AbcFile};
 
-mod common;
+use super::common;
 
 #[test]
 fn compiler_properties_and_async_rest_keep_their_bodies() {
@@ -11,9 +11,7 @@ fn compiler_properties_and_async_rest_keep_their_bodies() {
         ("debug", "property_recovery/debug.abc"),
         ("release", "property_recovery/release.abc"),
     ] {
-        let Some(bytes) = common::read_fixture(path) else {
-            continue;
-        };
+        let bytes = common::read_fixture(path);
         let file = AbcFile::parse(bytes).unwrap();
         let record = file
             .classes
