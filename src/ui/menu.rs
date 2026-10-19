@@ -56,7 +56,7 @@ type MenuRenderer = fn(&mut egui::Ui, &mut App);
 
 /// 渲染菜单栏（注入到标题栏）
 pub fn menu_bar(ui: &mut egui::Ui, app: &mut App) {
-    let fbt = flat_button_theme(theme::TEXT_SECONDARY);
+    let fbt = flat_button_theme(theme::palette().text_secondary);
     let menus: &[(&str, MenuRenderer)] = &[
         (&t!("menu.file"), file::render),
         (&t!("menu.edit"), edit::render),
@@ -66,9 +66,9 @@ pub fn menu_bar(ui: &mut egui::Ui, app: &mut App) {
     for (name, render) in menus {
         let btn = ui.add(FlatButton::new(name, &fbt).min_size(egui::vec2(40.0, 24.0)));
         egui::Popup::menu(&btn)
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
-                ui.style_mut().visuals.widgets.hovered.bg_fill = theme::BG_HOVER;
+                ui.style_mut().visuals.widgets.hovered.bg_fill = theme::palette().bg_hover;
                 render(ui, app);
             });
     }

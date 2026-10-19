@@ -55,7 +55,7 @@ impl TabViewer for EditorTabViewer<'_> {
             0.0,
             egui::TextFormat {
                 font_id: egui::FontId::new(11.0, codicon::family()),
-                color: theme::VERDIGRIS,
+                color: theme::palette().verdigris,
                 ..Default::default()
             },
         );
@@ -120,43 +120,20 @@ impl TabViewer for EditorTabViewer<'_> {
         {
             self.action = Some(TabAction::LoadDisasm(path));
         }
-        // ArkTS 子标签栏（源码 | 反汇编），jadx 风格置于内容上方
-        if tab.is_ark {
-            egui::Panel::top(ui.id().with("ark_subtabs"))
-                .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 3)))
-                .show_inside(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let bt = crate::appearance::theme::flat_button_theme(theme::TEXT_SECONDARY);
-                        let src_sel = tab.active_view == ActiveView::Decompiled;
-                        let src_label = t!("editor.view_source");
-                        let src_btn = egui_shell::components::FlatButton::new(&src_label, &bt)
-                            .min_size(egui::vec2(64.0, 24.0))
-                            .active(src_sel);
-                        if ui.add(src_btn).clicked() {
-                            tab.active_view = ActiveView::Decompiled;
-                        }
-                        let asm_sel = tab.active_view == ActiveView::Disasm;
-                        let asm_label = t!("editor.view_disasm");
-                        let asm_btn = egui_shell::components::FlatButton::new(&asm_label, &bt)
-                            .min_size(egui::vec2(64.0, 24.0))
-                            .active(asm_sel);
-                        if ui.add(asm_btn).clicked() {
-                            tab.active_view = ActiveView::Disasm;
-                        }
-                    });
-                });
-        }
-        // 渲染内容
-        match tab.active_view {
-            ActiveView::Decompiled if tab.is_text => {
-                render::render_editable(ui, tab, &matches, current);
-            }
-            ActiveView::Decompiled => {
-                render::render_decompiled(ui, tab, &matches, current);
-            }
-            ActiveView::Hex => render::render_hex(ui, tab, &matches, current),
-            ActiveView::Disasm => render::render_disasm(ui, tab, &matches, current),
-        }
+        // 代码内容独立滚动。
+        egui::ScrollArea::both()
+            .id_salt("editor_content")
+            .auto_shrink([false, false])
+            .show(ui, |ui| match tab.active_view {
+                ActiveView::Decompiled if tab.is_text => {
+                    render::render_editable(ui, tab, &matches, current);
+                }
+                ActiveView::Decompiled => {
+                    render::render_decompiled(ui, tab, &matches, current);
+                }
+                ActiveView::Hex => render::render_hex(ui, tab, &matches, current),
+                ActiveView::Disasm => render::render_disasm(ui, tab, &matches, current),
+            });
         // 浮动查找栏（overlay，用 clip_rect 定位到可见区域，不随 ScrollArea 滚动）
         if self.find_bar.open {
             let fbt = theme::find_bar_theme();
@@ -213,14 +190,19 @@ impl TabViewer for EditorTabViewer<'_> {
         false
     }
 
+    /// 由内容区管理滚动。
+    fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
+        [false, false]
+    }
+
     fn modification_color(&self, tab: &Self::Tab) -> Option<egui::Color32> {
         if tab.is_modified {
-            return Some(theme::ACCENT_ORANGE);
+            return Some(theme::palette().accent_orange);
         }
         if let Some(path) = &tab.entry_path
             && self.jar_modified.contains(path)
         {
-            return Some(theme::ACCENT_GREEN);
+            return Some(theme::palette().accent_green);
         }
         None
     }

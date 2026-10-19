@@ -1,6 +1,7 @@
 //! 已修改文件数量状态栏 item
 //!
 //! @author sky
+//! @author ljlVink
 
 use crate::appearance::theme;
 use eframe::egui;
@@ -65,7 +66,7 @@ tabookit::class! {
             entries.push(FileEntry {
                 path: path.clone(),
                 short_name,
-                color: theme::ACCENT_ORANGE,
+                color: theme::palette().accent_orange,
             });
         }
         for path in &self.saved_paths {
@@ -73,7 +74,7 @@ tabookit::class! {
             entries.push(FileEntry {
                 path: path.clone(),
                 short_name,
-                color: theme::ACCENT_CYAN,
+                color: theme::palette().accent_cyan,
             });
         }
         entries
@@ -88,7 +89,7 @@ tabookit::class! {
                 egui::Sense::click(),
             );
             if resp.hovered() {
-                ui.painter().rect_filled(rect, 2.0, theme::BG_HOVER);
+                ui.painter().rect_filled(rect, 2.0, theme::palette().bg_hover);
             }
             if resp.clicked() {
                 self.clicked = Some(entry.path.clone());
@@ -106,13 +107,13 @@ tabookit::class! {
                 egui::Align2::LEFT_CENTER,
                 &entry.short_name,
                 font.clone(),
-                theme::TEXT_PRIMARY,
+                theme::palette().text_primary,
             );
             // 路径（右侧灰色）
             let path_galley = ui.painter().layout_no_wrap(
                 entry.path.clone(),
                 egui::FontId::proportional(10.0),
-                theme::TEXT_MUTED,
+                theme::palette().text_muted,
             );
             let path_w = path_galley.size().x;
             let max_path_x = rect.right() - 6.0;
@@ -121,7 +122,7 @@ tabookit::class! {
                 ui.painter().galley(
                     egui::pos2(path_x, dot_y - path_galley.size().y / 2.0),
                     path_galley,
-                    theme::TEXT_MUTED,
+                    theme::palette().text_muted,
                 );
             }
         }
@@ -146,13 +147,13 @@ impl StatusItem for ModifiedCountItem {
         if saved_count > 0 {
             parts.push((
                 t!("status.modified", count = saved_count).to_string(),
-                theme::ACCENT_CYAN,
+                theme::palette().accent_cyan,
             ));
         }
         if unsaved_count > 0 {
             parts.push((
                 t!("status.changed", count = unsaved_count).to_string(),
-                theme::ACCENT_ORANGE,
+                theme::palette().accent_orange,
             ));
         }
         let gap = if parts.len() > 1 { 8.0 } else { 0.0 };
@@ -214,8 +215,8 @@ impl StatusItem for ModifiedCountItem {
                 .order(egui::Order::Foreground)
                 .show(ui.ctx(), |ui| {
                     let frame = egui::Frame::NONE
-                        .fill(theme::BG_LIGHT)
-                        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+                        .fill(theme::palette().bg_light)
+                        .stroke(egui::Stroke::new(1.0_f32, theme::palette().border))
                         .corner_radius(4.0)
                         .shadow(egui::Shadow {
                             spread: 1,

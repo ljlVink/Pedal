@@ -5,17 +5,17 @@
 
 use super::export_progress::ExportProgressItem;
 use super::modified_count::ModifiedCountItem;
-use super::view_toggle::ViewToggleItem;
+use super::view_toggle;
 use crate::appearance::theme;
 use crate::ui::editor::view_toggle::ActiveView;
 use eframe::egui;
-use egui_shell::components::panel::status_bar::{Alignment, StatusBarWidget, StatusItem, TextItem};
+use egui_shell::components::panel::status_bar::{StatusBarWidget, StatusItem};
 use rust_i18n::t;
 
 tabookit::class! {
     /// 状态栏服务
     ///
-    /// 内置默认 items（应用版本、视图切换、修改计数与导出进度），
+    /// 内置默认 items（应用版本、修改计数与导出进度），
     /// 外部只需调用 `render` 和 `sync` 即可。
     pub struct StatusBar {
         widget: StatusBarWidget,
@@ -24,26 +24,6 @@ tabookit::class! {
     /// 获取指定类型的 item 可变引用
     fn item_mut<T: StatusItem>(&mut self) -> Option<&mut T> {
         self.widget.item_mut::<T>()
-    }
-
-    /// 同步编辑器状态（ViewToggle + context_only items 可见性）
-    pub fn sync_view(&mut self, active_view: Option<ActiveView>) {
-        let has_tab = active_view.is_some();
-        for item in self.widget.items_mut() {
-            if let Some(text) = item.downcast_mut::<TextItem>()
-                && text.is_context_only() {
-                    text.set_visible(has_tab);
-                }
-            // 视图切换：ArkTS 源码|反汇编
-            if let Some(vt) = item.downcast_mut::<ViewToggleItem>() {
-                vt.set_active(active_view);
-            }
-        }
-    }
-
-    /// 取出用户通过 ViewToggle 切换的新视图（渲染后调用）
-    pub fn take_view_change(&mut self) -> Option<ActiveView> {
-        self.item_mut::<ViewToggleItem>()?.take_changed()
     }
 
     /// 同步已修改文件路径
@@ -65,22 +45,49 @@ tabookit::class! {
         self.item_mut::<ModifiedCountItem>()?.take_clicked()
     }
 
-    /// 渲染状态栏
-    pub fn render(&mut self, ui: &mut egui::Ui) {
-        self.widget.render(ui);
+    /// 按编辑区左边缘放置切换按钮，版本号和其余状态信息避开按钮区域。
+    pub fn render(
+        &mut self,
+        ui: &mut egui::Ui,
+        active_view: Option<&mut ActiveView>,
+        editor_left: f32,
+    ) {
+        self.widget.set_theme(theme::status_bar_theme());
+        let rect = ui.max_rect();
+        ui.painter().rect_filled(rect, 0.0, theme::palette().bg_dark);
+        let version = ui.painter().layout_no_wrap(
+            t!("status.version").to_string(),
+            egui::FontId::proportional(11.0),
+            theme::palette().text_muted,
+        );
+        let mut version_x = rect.left() + 12.0;
+        let mut controls_right = version_x;
+        if let Some(view) = active_view {
+            let controls_x = (editor_left + 8.0).max(version_x);
+            controls_right = controls_x + view_toggle::show(ui, view, controls_x);
+            // 资源管理器收起或正在收起时，将版本号顺延到按钮右侧。
+            if version_x + version.size().x + 16.0 > controls_x {
+                version_x = controls_right + 16.0;
+            }
+        }
+        let info_left = (version_x + version.size().x).max(controls_right) + 4.0;
+        ui.painter().galley(
+            egui::pos2(version_x, rect.center().y - version.size().y / 2.0),
+            version,
+            theme::palette().text_muted,
+        );
+        let mut info_rect = rect;
+        info_rect.min.x = info_left.min(rect.right());
+        self.widget.render(&mut ui.new_child(
+            egui::UiBuilder::new().id_salt("status_info").max_rect(info_rect),
+        ));
     }
 }
 
 impl Default for StatusBar {
     fn default() -> Self {
         let mut widget = StatusBarWidget::new(theme::status_bar_theme());
-        widget.add(TextItem::new(
-            t!("status.version"),
-            theme::TEXT_MUTED,
-            Alignment::Left,
-        ));
         widget.add(ModifiedCountItem::new());
-        widget.add(ViewToggleItem::new());
         widget.add(ExportProgressItem::new());
         Self { widget }
     }

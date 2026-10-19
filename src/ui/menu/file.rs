@@ -19,9 +19,10 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     if menu_item(
         ui,
         mt,
-        &t!("menu.open_jar"),
+        &t!("menu.open_file"),
         Some(&app.settings.keymap.open_jar),
     ) {
+        ui.close();
         app.request_open_jar_dialog();
     }
     // Open Recent submenu
@@ -35,7 +36,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
                 egui::Label::new(
                     egui::RichText::new(t!("menu.no_recent"))
                         .size(12.0)
-                        .color(egui::Color32::from_rgb(100, 100, 100)),
+                        .color(theme::palette().text_muted),
                 ),
             );
         } else {
@@ -58,9 +59,11 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         }
     });
     if let Some(path) = open_path {
+        ui.close();
         app.request_open_jar(&path);
     }
     if clear {
+        ui.close();
         app.settings.clear_recent();
         let _ = app.settings.save();
     }
@@ -72,6 +75,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         Some(&app.settings.keymap.export_jar),
         state.has_jar && state.is_idle && !state.is_ark,
     ) {
+        ui.close();
         app.export_jar();
     }
     if menu_item_if(
@@ -81,6 +85,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         None,
         state.has_jar && state.is_idle && state.has_jar_changes && !state.is_ark,
     ) {
+        ui.close();
         app.save_jar_overwrite_source();
     }
     if menu_item_if(
@@ -90,6 +95,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         Some(&app.settings.keymap.export_decompiled),
         state.is_ark && state.is_idle,
     ) {
+        ui.close();
         app.export_decompiled();
     }
     ui.separator();
@@ -99,10 +105,12 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         &t!("menu.settings"),
         Some(&app.settings.keymap.open_settings),
     ) {
+        ui.close();
         app.open_settings();
     }
     ui.separator();
     if menu_item_raw(ui, mt, &t!("menu.exit"), "Alt+F4") {
+        ui.close();
         app.request_close(ui.ctx());
     }
 }

@@ -1,6 +1,7 @@
 //! Shell 应用包装器：管理壳子生命周期，业务通过 trait 注入
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::{components::WindowConfig, fonts, platform, titlebar};
 use eframe::egui;
@@ -11,6 +12,10 @@ pub trait AppContent {
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, theme: &ShellTheme);
     /// 标题栏菜单内容（注入到标题栏左侧）
     fn menu_bar(&mut self, _ui: &mut egui::Ui) {}
+    /// 返回当前外壳主题，在每帧绘制前更新；默认沿用启动配置。
+    fn shell_theme(&self) -> Option<ShellTheme> {
+        None
+    }
 }
 
 /// 窗口壳子主题配色
@@ -97,11 +102,8 @@ where
         &options.title,
         native,
         Box::new(move |cc| {
-            // 锁定 dark 主题，接管所有 widget/菜单/弹窗的配色
+            // 默认使用深色，业务层可在初始化和运行期间切换主题。
             cc.egui_ctx.set_theme(egui::Theme::Dark);
-            cc.egui_ctx.all_styles_mut(|style| {
-                style.visuals = egui::Visuals::dark();
-            });
             fonts::setup(&cc.egui_ctx);
             let content = create(cc);
             Ok(Box::new(ShellApp {
@@ -138,6 +140,9 @@ struct ShellApp {
 impl eframe::App for ShellApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if let Some(theme) = self.content.shell_theme() {
+            self.theme = theme;
+        }
         // 先填充整个窗口背景，避免面板间隙露出原生窗口黑色底色
         ui.painter().rect_filled(ui.max_rect(), 0.0, self.theme.bg);
         if !self.visible {

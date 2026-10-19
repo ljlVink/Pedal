@@ -3,8 +3,10 @@
 //! @author ljlVink
 
 pub mod cfg;
+pub(crate) mod class_recovery;
 pub mod lift;
 pub mod printer;
+mod signatures;
 pub mod structure;
 
 use crate::error::AbcResult;
@@ -29,15 +31,20 @@ fn module_record_of(file: &AbcFile, class: &ClassInfo) -> Option<ModuleRecord> {
 pub fn decompile_record(file: &AbcFile, class: &ClassInfo) -> AbcResult<DecompiledRecord> {
     let module = module_record_of(file, class);
     let mut units = Vec::new();
+    let recovery = std::rc::Rc::new(class_recovery::RecordRecovery::build(
+        file,
+        class,
+        module.as_ref(),
+    ));
     // record 级共享：闭包/类成员展开缓存 + 额度
     let nested = std::rc::Rc::new(std::cell::RefCell::new(printer::NestedCache {
+        recovery: Some(recovery.clone()),
         map: std::collections::HashMap::new(),
-        closure_budget: 100,
+        closure_budget: 256,
         closure_bytes: 0,
-        member_budget: 12,
+        member_budget: 256,
         member_bytes: 0,
-        expanded: std::collections::HashSet::new(),
-        closure_embedded: std::collections::HashSet::new(),
+        closure_emitted_bytes: 0,
     }));
     // 模块 import/export
     if let Some(m) = &module {
@@ -46,7 +53,8 @@ pub fn decompile_record(file: &AbcFile, class: &ClassInfo) -> AbcResult<Decompil
             units.push(header);
         }
     }
-    // 类合成：`#&#Name` 初始化器 + `#&@N*#method` 静态方法族 → export class
+    // 旧格式保留名称启发式；现代格式必须由 defineclass 证明归属。
+    // `#&#Name` 同样用于 namespace 的 IIFE，不能仅凭名称把闭包移到类作用域。
     let class_init = class
         .methods
         .iter()
@@ -58,7 +66,9 @@ pub fn decompile_record(file: &AbcFile, class: &ClassInfo) -> AbcResult<Decompil
         .collect();
     let mut synthesized_class: Option<String> = None;
     let mut class_name_out: Option<String> = None;
-    if let Some(init) = class_init
+    if file.header.kind == crate::file::HeaderKind::Legacy
+        && !recovery.has_classes()
+        && let Some(init) = class_init
         && !class_members.is_empty()
         && let Some((text, cname)) = synthesize_class(file, class, init, &class_members, &nested)
     {
@@ -75,62 +85,80 @@ pub fn decompile_record(file: &AbcFile, class: &ClassInfo) -> AbcResult<Decompil
             if let Some(code) = &m.code {
                 let bytes = code.instructions(&file.data);
                 let legacy = file.header.kind == crate::file::HeaderKind::Legacy;
-                if let Ok(ins) = crate::disasm::decode_with(bytes, legacy)
-                    && ins.len() <= 2_000
-                {
-                    let graph = cfg::build(&ins, bytes.len(), &code.try_blocks);
-                    let mut body = lift::lift(file, class, m, code, &graph, module.as_ref());
-                    if body.stmts.len() <= 600 {
-                        structure::fold_register_stmts(&mut body.stmts);
-                    }
-                    structure::eliminate_dead_stores(&mut body.stmts);
-                    structure::truncate_after_return(&mut body.stmts);
-                    // 顶层筛选：类导出/机器语句剔除，词法环境字面量记名
-                    let mut filtered = Vec::new();
-                    for st in std::mem::take(&mut body.stmts) {
-                        match &st {
-                            lift::Stmt::Expr(lift::Expr::Assign(target, val))
-                                if matches!(target.as_ref(), lift::Expr::LexVar(_, _))
-                                    && matches!(
-                                        val.as_ref(),
-                                        lift::Expr::Str(_)
-                                            | lift::Expr::Int(_)
-                                            | lift::Expr::Bool(_)
-                                            | lift::Expr::Special(_)
-                                    ) =>
-                            {
-                                if let lift::Expr::LexVar(d, s) = target.as_ref() {
-                                    let name = format!("lex{d}_{s}");
-                                    lex_consts.insert((*d, *s), name.clone());
-                                    filtered.push(lift::Stmt::Declare(
-                                        name,
-                                        Some(val.as_ref().clone()),
-                                    ));
+                match crate::disasm::decode_with(bytes, legacy) {
+                    Ok(ins) if ins.len() <= 2_000 => {
+                        let graph = cfg::build(&ins, bytes.len(), &code.try_blocks);
+                        let mut body = lift::lift_with_lexical_names(
+                            file,
+                            m,
+                            code,
+                            &graph,
+                            module.as_ref(),
+                            recovery.lexical_names(m.offset),
+                        );
+                        recovery.rewrite_body(m.offset, &mut body);
+                        structure::polish(&mut body.stmts);
+                        recovery.finish_main(file, &mut body);
+                        // 顶层筛选：类导出/机器语句剔除，词法环境字面量记名
+                        let mut filtered = Vec::new();
+                        for st in std::mem::take(&mut body.stmts) {
+                            match &st {
+                                lift::Stmt::Expr(lift::Expr::Assign(target, val))
+                                    if matches!(target.as_ref(), lift::Expr::LexVar(_, _))
+                                        && matches!(
+                                            val.as_ref(),
+                                            lift::Expr::Str(_)
+                                                | lift::Expr::Int(_)
+                                                | lift::Expr::Bool(_)
+                                                | lift::Expr::Special(_)
+                                        ) =>
+                                {
+                                    if let lift::Expr::LexVar(d, s) = target.as_ref() {
+                                        let name = format!("lex{d}_{s}");
+                                        lex_consts.insert((*d, *s), name.clone());
+                                        filtered.push(lift::Stmt::Declare(
+                                            name,
+                                            Some(val.as_ref().clone()),
+                                        ));
+                                    }
                                 }
-                            }
-                            // 类导出（含 default）：类由合成渲染表达
-                            lift::Stmt::Expr(lift::Expr::Assign(target, _))
-                                if matches!(target.as_ref(), lift::Expr::Name(n)
+                                // 类导出（含 default）：类由合成渲染表达
+                                lift::Stmt::Expr(lift::Expr::Assign(target, _))
+                                    if matches!(target.as_ref(), lift::Expr::Name(n)
                                         if class_name_out.as_deref().is_some_and(|c|
                                             n.trim_start_matches("export:") == c)
                                             || matches!(target.as_ref(), lift::Expr::Name(n)
                                                 if n == "export:default")) => {}
-                            // defineclass 机器调用：lexenv 空对象/Boolean 包装
-                            lift::Stmt::Expr(lift::Expr::Call { callee, .. })
-                                if match callee.as_ref() {
-                                    lift::Expr::TemplateLit(_) => true,
-                                    lift::Expr::Name(n) => n == "Boolean",
-                                    _ => false,
-                                } => {}
-                            // 模块顶层隐式 return
-                            lift::Stmt::Return(None) => {}
-                            _ => filtered.push(st),
+                                // defineclass 机器调用：lexenv 空对象/Boolean 包装
+                                lift::Stmt::Expr(lift::Expr::Call { callee, .. })
+                                    if match callee.as_ref() {
+                                        lift::Expr::TemplateLit(_) => true,
+                                        lift::Expr::Name(n) => n == "Boolean",
+                                        _ => false,
+                                    } => {}
+                                // 模块顶层隐式 return
+                                lift::Stmt::Return(None) => {}
+                                _ => filtered.push(st),
+                            }
                         }
+                        body.stmts = filtered;
+                        top_level = Some(printer::render_top_level(file, &body, &nested));
                     }
-                    body.stmts = filtered;
-                    top_level = Some(printer::render_top_level(file, &body, &nested));
+                    Ok(_) => {
+                        // 顶层初始化同样需要保留超限回退，不能静默丢失整份源码。
+                        top_level = Some(printer::render_large_method(file, m, code, bytes));
+                    }
+                    Err(error) => {
+                        top_level = Some(format!(
+                            "// method {:?} @ {:#x}: bytecode decode failed: {error}\n",
+                            m.name, m.offset
+                        ));
+                    }
                 }
             }
+            continue;
+        }
+        if recovery.is_member(m.offset) {
             continue;
         }
         if synthesized_class.is_some()
@@ -227,7 +255,7 @@ pub fn render_nested_function(
     style: NestedStyle,
     cache: &std::rc::Rc<std::cell::RefCell<printer::NestedCache>>,
 ) -> Option<String> {
-    if depth > 3 {
+    if depth > printer::NestedCache::MAX_DEPTH {
         return None;
     }
     let key = (method_off as u64) * 2 + u64::from(style == NestedStyle::Arrow);
@@ -239,7 +267,7 @@ pub fn render_nested_function(
     if cache.borrow().exhausted(arrow) {
         return None;
     }
-    cache.borrow_mut().charge(arrow, 0);
+    cache.borrow_mut().reserve(arrow);
     let m = file.method_at(method_off).ok()?;
     let code = m.code.as_ref()?;
     if code.code_size > 8_000 {
@@ -248,19 +276,25 @@ pub fn render_nested_function(
     let bytes = code.instructions(&file.data);
     let legacy = file.header.kind == crate::file::HeaderKind::Legacy;
     let ins = crate::disasm::decode_with(bytes, legacy).ok()?;
-    if ins.len() > 2_000 {
+    if ins.len() > 4_096 {
         return None;
     }
     let graph = cfg::build(&ins, bytes.len(), &code.try_blocks);
-    let mut body = lift::lift(file, &dummy_class(), &m, code, &graph, None);
-    if body.stmts.len() <= 600 {
-        structure::fold_register_stmts(&mut body.stmts);
+    let recovery = cache.borrow().recovery.clone();
+    let module = recovery.as_ref().and_then(|r| r.module(file));
+    let names = recovery
+        .as_ref()
+        .map(|r| r.lexical_names(m.offset))
+        .unwrap_or_default();
+    let mut body = lift::lift_with_lexical_names(file, &m, code, &graph, module.as_ref(), names);
+    if let Some(recovery) = recovery {
+        recovery.rewrite_body(m.offset, &mut body);
     }
-    structure::eliminate_dead_stores(&mut body.stmts);
+    structure::polish(&mut body.stmts);
     let text = printer::render_nested(file, &m, code, &body, depth, style, cache);
     {
         let mut c = cache.borrow_mut();
-        c.charge(arrow, text.len());
+        c.record_bytes(arrow, text.len());
         c.map.insert(key, text.clone());
     }
     Some(text)
@@ -280,6 +314,7 @@ fn synthesize_class(
         _ => return None,
     };
     let mut out = format!("export class {cname} {{\n");
+    let module = module_record_of(file, class);
     // 方法��集合：与成员同名的占位字段声明（a3.X = undefined）不再输出
     let method_names: std::collections::HashSet<String> = members
         .iter()
@@ -316,23 +351,28 @@ fn synthesize_class(
     }
     // 静态方法体（沿用 decompile_method 的渲染，重排为类成员缩进）
     for m in members {
-        let src = decompile_method(file, class, m, None, nested).ok()?;
+        let src = decompile_method(file, class, m, module.as_ref(), nested).ok()?;
+        let modifier = if matches!(
+            classify_method(&m.name),
+            MethodFamily::ClassMethod { static_: true, .. }
+        ) {
+            "static "
+        } else {
+            ""
+        };
         let mut in_body = false;
         for line in src.lines() {
-            let line = line.trim_start();
-            if line.starts_with("//") {
+            if !in_body && (line.starts_with("//") || line.is_empty()) {
                 continue;
             }
             if !in_body {
-                let line = line.strip_prefix("function ").unwrap_or(line);
-                out.push_str(&format!("    static {line}\n"));
+                let line = line.replacen("function ", "", 1);
+                out.push_str(&format!("    {modifier}{line}\n"));
                 if line.contains('{') {
                     in_body = true;
                 }
-            } else if line == "}" {
-                out.push_str("    }\n");
             } else if !line.is_empty() {
-                out.push_str(&format!("        {line}\n"));
+                out.push_str(&format!("    {line}\n"));
             }
         }
     }
@@ -359,19 +399,6 @@ fn sanitize_name(name: &str) -> String {
     }
 }
 
-/// 空 class 占位（lift 只读取 class 的少数字段）
-fn dummy_class() -> crate::file::ClassInfo {
-    crate::file::ClassInfo {
-        offset: 0,
-        name: String::new(),
-        access_flags: 0,
-        source_file: None,
-        fields: Vec::new(),
-        methods: Vec::new(),
-        module_record_idx: None,
-    }
-}
-
 /// 反编译单个方法
 pub fn decompile_method(
     file: &AbcFile,
@@ -381,7 +408,7 @@ pub fn decompile_method(
     nested: &std::rc::Rc<std::cell::RefCell<printer::NestedCache>>,
 ) -> AbcResult<String> {
     let Some(code) = &m.code else {
-        return Ok(String::new());
+        return Ok(printer::render_declaration(file, m).unwrap_or_default());
     };
     let bytes = code.instructions(&file.data);
     let legacy = file.header.kind == crate::file::HeaderKind::Legacy;
@@ -392,12 +419,17 @@ pub fn decompile_method(
         return Ok(printer::render_large_method(file, m, code, bytes));
     }
     let graph = cfg::build(&ins, bytes.len(), &code.try_blocks);
-    let mut body = lift::lift(file, class, m, code, &graph, module);
-    if body.stmts.len() <= 600 {
-        structure::fold_register_stmts(&mut body.stmts);
+    let names = nested
+        .borrow()
+        .recovery
+        .as_ref()
+        .map(|r| r.lexical_names(m.offset))
+        .unwrap_or_default();
+    let mut body = lift::lift_with_lexical_names(file, m, code, &graph, module, names);
+    if let Some(recovery) = nested.borrow().recovery.clone() {
+        recovery.rewrite_body(m.offset, &mut body);
     }
-    structure::eliminate_dead_stores(&mut body.stmts);
-    structure::truncate_after_return(&mut body.stmts);
+    structure::polish(&mut body.stmts);
     structure::recover_switches(&mut body.stmts);
     Ok(printer::render_method(file, class, m, code, &body, nested))
 }

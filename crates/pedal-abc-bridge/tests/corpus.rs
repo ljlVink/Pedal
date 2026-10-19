@@ -3,7 +3,7 @@
 //! 语料目录不入库，CI 上自动 skip；本地存在时验证：
 //! - 容器解析（12.x 与 0.1.0.7 两代布局）
 //! - 指令解码覆盖率
-//! - 反编译产物非空且包含函数头
+//! - 反编译产物非空且包含函数或类声明
 //!
 //! @author ljlVink
 
@@ -16,7 +16,9 @@ use std::path::Path;
 const CORPUS: &str = "test_examples";
 
 fn corpus_dir() -> Option<std::path::PathBuf> {
-    let dir = Path::new(CORPUS);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(CORPUS);
     dir.exists().then(|| dir.to_path_buf())
 }
 
@@ -68,7 +70,7 @@ fn modern_abc_decompiles_records() {
     let mut decompiled = 0;
     for c in file.classes.iter().take(40) {
         let rec = decompile::decompile_record(&file, c).unwrap();
-        if rec.source.contains("function ") {
+        if rec.source.contains("function ") || rec.source.contains("class ") {
             decompiled += 1;
         }
     }
@@ -76,6 +78,151 @@ fn modern_abc_decompiles_records() {
         decompiled > 5,
         "expected decompilable records, got {decompiled}"
     );
+}
+
+#[test]
+fn appgallery_widget_constructor_marks_erased_types_and_arkui_hints() {
+    let Some(dir) = corpus_dir() else { return };
+    let path = dir.join("AppGallery/entry.hap");
+    if !path.exists() {
+        return;
+    }
+    let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
+    let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
+    let record = file.classes.iter().find(|record| record.name == "L&@hw-ae-presentation/entry-har/src/main/ets/widget/pages/HarWidgetCard&7.2.1-100;").unwrap();
+    let constructor = record
+        .methods
+        .iter()
+        .find(|method| method.name == "#~@0=#e408")
+        .unwrap();
+    assert_eq!(constructor.proto_off, 0);
+    assert_eq!(constructor.code.as_ref().unwrap().num_args, 9);
+    let debug = file.read_debug_info(constructor).unwrap().unwrap();
+    assert!(debug.parameter_names.is_empty() && debug.locals.is_empty());
+    let source = decompile::decompile_record(&file, record).unwrap().source;
+    assert!(source.contains("types inferred from ArkUI ViewPU"));
+    assert!(
+        source.contains("constructor(\n        parent: IView | undefined,"),
+        "{source}"
+    );
+    assert!(source.contains("params: unknown,"));
+    assert!(source.contains("elmtId: number | undefined,"));
+    assert!(source.contains("super(parent, localStorage, elmtId, extraInfo)"));
+}
+
+#[test]
+fn appgallery_analytics_constants_recover_all_72_static_values() {
+    let Some(dir) = corpus_dir() else { return };
+    let path = dir.join("AppGallery/entry.hap");
+    if !path.exists() {
+        return;
+    }
+    let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
+    let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
+    let record = file
+        .classes
+        .iter()
+        .find(|record| {
+            record
+                .name
+                .contains("hianalytics-js/src/main/ets/common/Constants&")
+        })
+        .unwrap();
+    let source = decompile::decompile_record(&file, record).unwrap().source;
+    assert_eq!(source.matches("    static ").count(), 72, "{source}");
+    assert!(source.contains("static DEFAULT_TAG = \"ha_standard\";"));
+    assert!(source.contains("static TYPE_OPER = 0;"));
+    assert!(source.contains("static ON_APP_START = \"$APP_START\";"));
+    assert!(!source.contains("definepropertybyname"));
+    assert!(!source.contains("Object.defineProperty"));
+}
+
+#[test]
+fn appgallery_download_key_resolver_initializes_register_declarations() {
+    let Some(dir) = corpus_dir() else { return };
+    let path = dir.join("AppGallery/@hw-ae-business+download-install-default.hsp");
+    if !path.exists() {
+        return;
+    }
+    let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
+    let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
+    let record = file
+        .classes
+        .iter()
+        .find(|record| {
+            record
+                .name
+                .contains("DownloadManager/bean/DownloadTaskUniqueKeyResolver&")
+        })
+        .expect("DownloadTaskUniqueKeyResolver record present");
+    let source = decompile::decompile_record(&file, record).unwrap().source;
+    assert!(
+        source.contains("static getUniqueKeyType(a0) {\n        let v0 = DownloadSceneType;"),
+        "{source}"
+    );
+    assert!(
+        source.contains("let v0 = DownloadTaskUniqueKeyResolver.SEPARATOR;"),
+        "{source}"
+    );
+    assert!(
+        source.contains("let v1 = DownloadTaskUniqueKeyType;"),
+        "{source}"
+    );
+    // v2 的首次写入发生在条件分支，仍需在方法作用域声明。
+    assert!(source.contains("        let v2;"), "{source}");
+    assert!(!source.contains("let v2 = RemoteInstallType;"), "{source}");
+    assert!(!source.contains("let v0;"), "{source}");
+}
+
+#[test]
+fn appgallery_entry_property_tables_rest_callbacks_and_object_methods_recover() {
+    let Some(dir) = corpus_dir() else { return };
+    let path = dir.join("AppGallery/entry.hap");
+    if !path.exists() {
+        return;
+    }
+    let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
+    let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
+    for fragment in [
+        "/startup/util/DiversionUtil&",
+        "/BiReport/VideoBiReportUtil&",
+        "/preload/util/SilenceUtil&",
+        "/model/pattern/PafListModel&",
+        "/agreement/GlobalAgreementInit&",
+        "/consent/src/main/ets/f/g/h&",
+    ] {
+        let record = file
+            .classes
+            .iter()
+            .find(|record| record.name.contains(fragment))
+            .unwrap();
+        let source = decompile::decompile_record(&file, record).unwrap().source;
+        for missing in [
+            "Conservative fallback",
+            "method@",
+            "definefieldbyvalue",
+            "definefieldbyindex",
+            "stownbyvaluewithnameset",
+        ] {
+            assert!(!source.contains(missing), "{fragment}: {missing}");
+        }
+        if fragment.contains("VideoBiReportUtil") {
+            for key in ["PLAY_ICON_CLICK", "MUTE_ICON_CLICK", "FULL_ICON_CLICK"] {
+                assert!(
+                    source.contains(&format!("Object.defineProperty(v3, VideoEventId.{key},")),
+                    "{fragment}: {key}"
+                );
+            }
+        }
+        if fragment.contains("SilenceUtil") {
+            for key in 0..8 {
+                assert!(
+                    source.contains(&format!("Object.defineProperty(v0, {key},")),
+                    "{fragment}: {key}"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -99,6 +246,46 @@ fn legacy_abc_parses_and_mostly_decodes() {
         rate > 0.80,
         "legacy decode coverage regression: {ok}/{total} ({rate:.1}%)"
     );
+}
+
+#[test]
+fn appgallery_about_sheet_recovers_imported_base_and_implicit_constructor() {
+    let Some(dir) = corpus_dir() else { return };
+    let path = dir.join("AppGallery/entry.hap");
+    if !path.exists() {
+        return;
+    }
+    let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
+    let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
+    let record = file
+        .classes
+        .iter()
+        .find(|record| {
+            record
+                .name
+                .contains("ui-widget-about-v2/src/default/ets/model/PafAboutSheetConfig&")
+        })
+        .unwrap();
+    let source = decompile::decompile_record(&file, record).unwrap().source;
+    assert!(
+        source.contains("class PafAboutSheetConfig extends PafSheetConfig {"),
+        "{source}"
+    );
+    assert!(source.contains("super(...[...arguments]);"), "{source}");
+    assert!(source.contains("this.isSheetShow = false;"), "{source}");
+    assert!(source.contains("    setSheetShowStatus("), "{source}");
+    assert!(source.contains("    getSheetShowStatus()"), "{source}");
+    for invalid in [
+        "function ",
+        "import:",
+        "getunmappedargs",
+        "supercallspread",
+        "currentFunction",
+        "catch (",
+        ".push(",
+    ] {
+        assert!(!source.contains(invalid), "{source}");
+    }
 }
 
 #[test]
@@ -133,7 +320,7 @@ fn hinote_logutil_lifts_globals_and_lexvars() {
         .expect("LogUtil record present");
     let out = decompile::decompile_record(&file, rec).unwrap();
     assert!(
-        out.source.contains("globalThis.console.info("),
+        out.source.contains("globalThis.console") && out.source.contains(".info("),
         "tryldglobalbyname must resolve the global: {}",
         &out.source[..out.source.len().min(400)]
     );
@@ -146,4 +333,62 @@ fn hinote_logutil_lifts_globals_and_lexvars() {
         !out.source.contains("+ globalThis.console.info))"),
         "callee must not leak into concat operand"
     );
+}
+
+#[test]
+fn hinote_diagnostic_records_recover_module_class_and_private_instructions() {
+    let Some(dir) = corpus_dir() else { return };
+    let path = dir.join("Hinote/HiNote.hap");
+    if !path.exists() {
+        return;
+    }
+    let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
+    let file = AbcFile::parse(hap.read_entry(hap.main_abc().unwrap()).unwrap()).unwrap();
+    let (decoded, total) = decode_coverage(&file);
+    assert!(total > 100);
+    assert_eq!(decoded, total);
+    for fragment in [
+        "hwr/sdk/Params&",
+        "/model/FocusArea&",
+        "p-limit/index&",
+        "yocto-queue/index&",
+        "/http/HttpClientSelectorImpl&",
+    ] {
+        let record = file
+            .classes
+            .iter()
+            .find(|record| record.name.contains(fragment))
+            .unwrap();
+        let source = decompile::decompile_record(&file, record).unwrap().source;
+        for missing in [
+            "/*definesendableclass",
+            "/* callruntime.ldsendableexternalmodulevar",
+            "/* wide.stmodulevar",
+            "/* wide.ldlocalmodulevar",
+            "/* definegettersetterbyvalue",
+            "/* ldprivateproperty",
+            "/* stprivateproperty",
+            "/* callruntime.defineprivateproperty",
+            "/* callruntime.createprivateproperty",
+            "/* callruntime.callinit",
+            "unrecognized async resume protocol",
+        ] {
+            assert!(!source.contains(missing), "{fragment}: {missing}");
+        }
+        if fragment == "hwr/sdk/Params&" {
+            assert!(source.contains("@Sendable\nclass Params"), "{source}");
+            assert!(source.contains("static createInstance()"), "{source}");
+            assert!(source.contains("new ParamsImpl("), "{source}");
+        }
+        if fragment == "yocto-queue/index&" {
+            assert!(
+                source.contains("unrecognized generator resume protocol"),
+                "{source}"
+            );
+            assert!(
+                !source.contains("let v1 = 0;\n        /* creategeneratorobj"),
+                "{source}"
+            );
+        }
+    }
 }

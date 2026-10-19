@@ -133,6 +133,7 @@ tabookit::class! {
         self.disasm_data =
             CodeData::new(&text, highlight::compute_spans(&text, Language::Bytecode));
         self.disasm_text = text;
+        self.disasm_layout_cache = None;
     }
 
     /// 重建文本视图的高亮数据（文本编辑后调用）

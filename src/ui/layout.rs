@@ -51,6 +51,8 @@ tabookit::class! {
         show_fps: bool,
         /// 关于对话框是否打开
         pub about_open: bool,
+        /// 关于对话框 Logo 纹理
+        about_logo: Option<egui::TextureHandle>,
     }
 
     pub fn new(settings: &Settings) -> Self {
@@ -66,6 +68,7 @@ tabookit::class! {
             explorer_visible: false,
             show_fps: false,
             about_open: false,
+            about_logo: None,
         }
     }
 }
@@ -80,6 +83,7 @@ impl App {
         self.handle_pending_open();
         self.handle_pending_reveal();
         self.poll_tasks();
+        self.poll_ark_disasm(ui.ctx());
         self.dispatch_keybinds(ui.ctx());
         self.render_panels(ui);
         self.render_overlays(ui, shell_theme);
@@ -131,13 +135,15 @@ impl App {
         if t > 0.0 {
             self.render_explorer(ui, rects.explorer);
         }
+        // 消费资源树本帧的点击，再绘制编辑器，避免旧焦点回写树的选中项。
+        self.handle_pending_open();
         if self.layout.explorer_visible && t >= 1.0 {
             self.render_resize_handle(ui, &rects);
         }
         self.render_editor(ui, rects.editor);
         self.collect_blocked_close();
         self.sync_explorer_selection();
-        self.render_status_bar(ui, rects.status);
+        self.render_status_bar(ui, rects.status, rects.editor.left());
     }
 
     /// 渲染浮动层（搜索、设置、通知、FPS、确认弹窗）
@@ -160,7 +166,7 @@ impl App {
         }
         let output = settings::show(&mut self.layout.settings_panel, ui.ctx(), shell_theme);
         if let Some(new_settings) = output.settings {
-            self.apply_settings(new_settings);
+            self.apply_settings(new_settings, ui.ctx());
             ui.ctx().request_repaint();
         }
         self.toasts.show(ui.ctx());
@@ -180,38 +186,74 @@ impl App {
             return;
         }
         let screen = ctx.content_rect();
-        let size = egui::vec2(400.0, 250.0);
+        let size = egui::vec2(460.0, 340.0);
         let pos = (screen.center() - size / 2.0).max(screen.left_top());
         let mut open = true;
-        let mut close_clicked = false;
+        let logo = self.layout.about_logo.get_or_insert_with(|| {
+            let decoded =
+                image::load_from_memory(include_bytes!("../../crates/egui-shell/icon.png"))
+                    .expect("embedded about logo must be a valid PNG")
+                    .into_rgba8();
+            let (width, height) = decoded.dimensions();
+            let pixels = egui::ColorImage::from_rgba_unmultiplied(
+                [width as usize, height as usize],
+                decoded.as_raw(),
+            );
+            ctx.load_texture("about-logo", pixels, egui::TextureOptions::LINEAR)
+        });
+        let logo_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.24), egui::pos2(1.0, 0.76));
+        // UV 裁剪不会改变 Image 的宽高比，需按裁剪区域提供源尺寸。
+        let logo_size = logo.size_vec2() * logo_uv.size();
         egui::Window::new(t!("menu.about"))
+            .close_button_hit_size(egui::vec2(36.0, 36.0))
             .resizable(false)
             .collapsible(false)
             .default_pos(pos)
             .fixed_size(size)
+            .frame(egui::Frame {
+                fill: theme::palette().bg_gutter,
+                stroke: egui::Stroke::new(1.0_f32, theme::palette().border),
+                corner_radius: egui::CornerRadius::same(10),
+                inner_margin: egui::Margin::same(22),
+                ..Default::default()
+            })
             .open(&mut open)
             .show(ctx, |ui| {
-                ui.add_space(6.0);
-                ui.heading("Pedal");
-                ui.label(format!("version {}", env!("CARGO_PKG_VERSION")));
-                ui.add_space(8.0);
-                ui.label(t!("about.description"));
-                ui.add_space(8.0);
-                ui.label(t!("about.license"));
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
-                    if ui.button(t!("about.close")).clicked() {
-                        close_clicked = true;
-                    }
+                ui.vertical_centered(|ui| {
+                    ui.add_space(4.0);
+                    ui.add(
+                        egui::Image::new((logo.id(), logo_size))
+                            .uv(logo_uv)
+                            .fit_to_exact_size(egui::vec2(250.0, 130.0)),
+                    );
+                    ui.add_space(14.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+                    ui.label(
+                        egui::RichText::new(t!("about.description"))
+                            .color(theme::palette().text_secondary),
+                    );
+                    ui.add_space(12.0);
+                    ui.label(
+                        egui::RichText::new(t!("about.license"))
+                            .color(theme::palette().text_muted)
+                            .small(),
+                    );
                 });
             });
-        self.layout.about_open = open && !close_clicked;
+        self.layout.about_open = open;
     }
 
     /// 应用新设置（keybind / 语言 / 持久化）
-    fn apply_settings(&mut self, new_settings: Settings) {
+    fn apply_settings(&mut self, new_settings: Settings, ctx: &egui::Context) {
         self.layout.keys = super::keybindings::build_keymap(&new_settings.keymap);
         if new_settings.language != self.settings.language {
             rust_i18n::set_locale(new_settings.language.code());
+        }
+        if new_settings.theme != self.settings.theme {
+            theme::apply(ctx, new_settings.theme);
+            self.layout.editor.clear_layout_caches();
+            self.layout.search.clear_layout_cache();
         }
         self.settings = new_settings;
         if let Err(e) = self.settings.save() {
@@ -236,14 +278,13 @@ impl App {
         let pos = ui.max_rect().left_top() + egui::vec2(8.0, 8.0);
         let font = egui::FontId::monospace(11.0);
         let painter = ui.painter();
-        // 半透明背景
-        let galley = painter.layout_no_wrap(text, font, egui::Color32::WHITE);
+        let galley = painter.layout_no_wrap(text, font, theme::palette().text_primary);
         let bg = egui::Rect::from_min_size(
             pos - egui::vec2(4.0, 2.0),
             galley.size() + egui::vec2(8.0, 4.0),
         );
-        painter.rect_filled(bg, 3.0, egui::Color32::from_black_alpha(160));
-        painter.galley(pos, galley, egui::Color32::WHITE);
+        painter.rect_filled(bg, 3.0, theme::palette().bg_light);
+        painter.galley(pos, galley, theme::palette().text_primary);
     }
 
     /// 获取 explorer 折叠/展开动画插值（同一帧内缓存）
@@ -254,7 +295,7 @@ impl App {
 
     /// 渲染 explorer 面板
     fn render_explorer(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
-        egui_shell::components::widget::island::paint(ui, rect, &theme::ISLAND);
+        egui_shell::components::widget::island::paint(ui, rect, &theme::island_style());
         let (tab_modified, jar_modified) = self.split_modified_entries();
         let mut child = ui.new_child(
             egui::UiBuilder::new()
@@ -266,7 +307,7 @@ impl App {
             .file_panel
             .render(&mut child, &tab_modified, &jar_modified);
         self.handle_file_panel_action();
-        egui_shell::components::widget::island::paint_corner_mask(ui, rect, &theme::ISLAND);
+        egui_shell::components::widget::island::paint_corner_mask(ui, rect, &theme::island_style());
     }
 
     fn handle_file_panel_action(&mut self) {
@@ -364,14 +405,16 @@ impl App {
 
     fn rebuild_file_tree(&mut self, jar_name: &str, paths: &[String]) {
         let path_refs: Vec<&str> = paths.iter().map(String::as_str).collect();
-        self.layout
-            .file_panel
-            .set_roots(tree::build_tree(jar_name, &path_refs));
+        let mut roots = tree::build_tree(jar_name, &path_refs);
+        if let Some(ark) = self.workspace.loaded().and_then(|s| s.ark.as_ref()) {
+            tree::apply_file_labels(&mut roots, &ark.record_labels);
+        }
+        self.layout.file_panel.set_roots(roots);
     }
 
     /// 渲染 editor 面板
     fn render_editor(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
-        egui_shell::components::widget::island::paint(ui, rect, &theme::ISLAND);
+        egui_shell::components::widget::island::paint(ui, rect, &theme::island_style());
         if let Workspace::Loading(loading) = &self.workspace {
             let current = loading.progress.current.load(Ordering::Relaxed);
             let total = loading.progress.total.load(Ordering::Relaxed);
@@ -398,20 +441,42 @@ impl App {
             );
             if let Some(entry) = self.layout.editor.pending_disasm.take() {
                 self.generate_ark_disasm(&entry);
+                ui.ctx().request_repaint();
             }
         }
-        egui_shell::components::widget::island::paint_corner_mask(ui, rect, &theme::ISLAND);
+        egui_shell::components::widget::island::paint_corner_mask(ui, rect, &theme::island_style());
     }
 
-    /// 懒生成 ArkTS record 的反汇编文本并填充到对应 tab
+    /// 启动 ArkTS record 后台反汇编，缓存命中时直接填充对应 tab。
     fn generate_ark_disasm(&mut self, entry_path: &str) {
-        let text = self
-            .workspace
-            .loaded_mut()
-            .and_then(|s| s.ark.as_mut())
-            .and_then(|ark| ark.build_disasm_entry(entry_path));
-        if let Some(text) = text {
-            self.layout.editor.set_tab_disasm(entry_path, text);
+        let Some(ark) = self.workspace.loaded_mut().and_then(|s| s.ark.as_mut()) else {
+            return;
+        };
+        let text = if let Some(text) = ark.disasm.get(entry_path) {
+            text.clone()
+        } else if ark.request_disasm_entry(entry_path) {
+            format!("// {}\n", t!("editor.disasm_loading"))
+        } else {
+            format!("// {}\n", t!("editor.disasm_failed"))
+        };
+        self.layout.editor.set_tab_disasm(entry_path, text);
+    }
+
+    /// 只消费当前工作区持有的任务，避免旧工作区同名条目的结果串入。
+    fn poll_ark_disasm(&mut self, ctx: &egui::Context) {
+        let Some(ark) = self.workspace.loaded_mut().and_then(|s| s.ark.as_mut()) else {
+            return;
+        };
+        for (entry, result) in ark.poll_disasm_entries() {
+            let text = result.unwrap_or_else(|| {
+                let text = format!("// {}\n", t!("editor.disasm_failed"));
+                ark.disasm.insert(entry.clone(), text.clone());
+                text
+            });
+            self.layout.editor.set_tab_disasm(&entry, text);
+        }
+        if ark.has_pending_disasm() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(25));
         }
     }
 
@@ -434,18 +499,23 @@ impl App {
     }
 
     /// 渲染 status bar
-    fn render_status_bar(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+    fn render_status_bar(&mut self, ui: &mut egui::Ui, rect: egui::Rect, editor_left: f32) {
         self.sync_status_bar(ui.ctx());
+        let active_view = self
+            .layout
+            .editor
+            .focused_tab_mut()
+            .filter(|tab| tab.is_ark)
+            .map(|tab| &mut tab.active_view);
         self.layout.status_bar.render(
             &mut ui.new_child(
                 egui::UiBuilder::new()
                     .max_rect(rect)
                     .id(egui::Id::new("status_bar")),
             ),
+            active_view,
+            editor_left,
         );
-        if let Some(v) = self.layout.status_bar.take_view_change() {
-            self.layout.editor.set_focused_view(v);
-        }
         if let Some(path) = self.layout.status_bar.take_clicked_file()
             && !self.layout.editor.focus_tab(&path)
         {
@@ -542,16 +612,16 @@ fn paint_loading(ui: &egui::Ui, rect: egui::Rect, name: &str, current: u32, tota
         egui::Align2::CENTER_CENTER,
         t!("layout.opening", name = name),
         egui::FontId::proportional(13.0),
-        theme::TEXT_SECONDARY,
+        theme::palette().text_secondary,
     );
     // 进度条
     let bar_w = 240.0;
     let bar_h = 4.0;
     let bar_rect = egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(bar_w, bar_h));
-    painter.rect_filled(bar_rect, 2.0, theme::BG_MEDIUM);
+    painter.rect_filled(bar_rect, 2.0, theme::palette().bg_medium);
     if frac > 0.0 {
         let fill = egui::Rect::from_min_size(bar_rect.left_top(), egui::vec2(bar_w * frac, bar_h));
-        painter.rect_filled(fill, 2.0, theme::VERDIGRIS);
+        painter.rect_filled(fill, 2.0, theme::palette().verdigris);
     }
     // 计数
     if total > 0 {
@@ -560,7 +630,7 @@ fn paint_loading(ui: &egui::Ui, rect: egui::Rect, name: &str, current: u32, tota
             egui::Align2::CENTER_CENTER,
             format!("{current} / {total}"),
             egui::FontId::proportional(11.0),
-            theme::TEXT_MUTED,
+            theme::palette().text_muted,
         );
     }
 }

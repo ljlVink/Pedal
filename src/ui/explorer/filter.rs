@@ -1,6 +1,7 @@
 //! Explorer 速搜过滤：键盘输入捕获、后台匹配、浮层渲染
 //!
 //! @author sky
+//! @author ljlVink
 
 use super::FilePanel;
 use super::tree;
@@ -152,11 +153,11 @@ impl FilePanel {
             egui::pos2(rect.left() + m, rect.bottom() - bar_h - m),
             egui::pos2(rect.right() - m, rect.bottom() - m),
         );
-        painter.rect_filled(bar_rect, 4.0, theme::BG_MEDIUM);
+        painter.rect_filled(bar_rect, 4.0, theme::palette().bg_medium);
         painter.rect_stroke(
             bar_rect,
             4.0,
-            egui::Stroke::new(1.0_f32, theme::BORDER),
+            egui::Stroke::new(1.0_f32, theme::palette().border),
             egui::StrokeKind::Middle,
         );
         // 搜索图标
@@ -165,7 +166,7 @@ impl FilePanel {
             egui::Align2::LEFT_CENTER,
             codicon::SEARCH,
             egui::FontId::new(11.0, codicon::family()),
-            theme::TEXT_MUTED,
+            theme::palette().text_muted,
         );
         // 过滤文本
         painter.text(
@@ -173,7 +174,7 @@ impl FilePanel {
             egui::Align2::LEFT_CENTER,
             &self.filter,
             egui::FontId::proportional(12.0),
-            theme::TEXT_PRIMARY,
+            theme::palette().text_primary,
         );
     }
 }

@@ -34,7 +34,10 @@ impl App {
             .sources
             .iter()
             .map(|(path, source)| {
-                let (class_name, package) = index::split_class_path(path);
+                let (mut class_name, package) = index::split_class_path(path);
+                if let Some(label) = ark.record_labels.get(path) {
+                    class_name = label.strip_suffix(".ets").unwrap_or(label).to_string();
+                }
                 index::IndexEntry {
                     entry_path: path.clone(),
                     class_name,

@@ -158,6 +158,13 @@ tabookit::class! {
         self.pending_open.take()
     }
 
+    /// 主题切换时仅清除预览排版，保留搜索结果及语法分析。
+    pub fn clear_layout_cache(&mut self) {
+        if let Some(cache) = &mut self.preview_cache {
+            cache.layout_cache = None;
+        }
+    }
+
     pub fn render(&mut self, ctx: &egui::Context, shell_theme: &egui_shell::ShellTheme) {
         self.poll_search_result(ctx);
         self.poll_debounce(ctx);
@@ -179,14 +186,14 @@ tabookit::class! {
                             files = s.files_matched
                         ))
                         .size(11.0)
-                        .color(theme::TEXT_MUTED),
+                        .color(theme::palette().text_muted),
                     );
                     if s.truncated {
                         ui.add_space(4.0);
                         ui.label(
                             egui::RichText::new(t!("search.truncated", max = MAX_MATCHES))
                                 .size(11.0)
-                                .color(theme::ACCENT_ORANGE),
+                                .color(theme::palette().accent_orange),
                         );
                     }
                 } else if searching && live_matches > 0 {
@@ -197,7 +204,7 @@ tabookit::class! {
                             files = live_files
                         ))
                         .size(11.0)
-                        .color(theme::TEXT_MUTED),
+                        .color(theme::palette().text_muted),
                     );
                 }
             },
@@ -219,7 +226,7 @@ tabookit::class! {
     }
 
     fn render_toolbar(&mut self, ui: &mut egui::Ui) {
-        let fbt = flat_button_theme(theme::TEXT_SECONDARY);
+        let fbt = flat_button_theme(theme::palette().text_secondary);
         let toolbar_h = 36.0;
         let avail_w = ui.available_width();
         let (rect, _) =
@@ -233,7 +240,7 @@ tabookit::class! {
         tb.label(
             egui::RichText::new(codicon::SEARCH)
                 .font(egui::FontId::new(14.0, codicon::family()))
-                .color(theme::TEXT_MUTED),
+                .color(theme::palette().text_muted),
         );
         tb.add_space(4.0);
         let input_width = (tb.available_width() - 80.0).max(120.0);
@@ -241,7 +248,7 @@ tabookit::class! {
             egui::TextEdit::singleline(&mut self.query)
                 .hint_text(t!("search.hint"))
                 .frame(egui::Frame::NONE)
-                .text_color(theme::TEXT_PRIMARY)
+                .text_color(theme::palette().text_primary)
                 .font(egui::FontId::proportional(13.0))
                 .desired_width(input_width),
         );
@@ -254,7 +261,7 @@ tabookit::class! {
             .font_family(codicon::family())
             .font_size(15.0)
             .active(self.case_sensitive)
-            .inactive_color(theme::TEXT_MUTED)
+            .inactive_color(theme::palette().text_muted)
             .min_size(egui::vec2(28.0, 24.0));
         if tb
             .add(btn_case)
@@ -271,7 +278,7 @@ tabookit::class! {
             .font_family(codicon::family())
             .font_size(15.0)
             .active(self.use_regex)
-            .inactive_color(theme::TEXT_MUTED)
+            .inactive_color(theme::palette().text_muted)
             .min_size(egui::vec2(28.0, 24.0));
         if tb
             .add(btn_regex)
@@ -314,7 +321,7 @@ tabookit::class! {
                 egui::Align2::CENTER_CENTER,
                 msg,
                 egui::FontId::proportional(12.0),
-                theme::TEXT_MUTED,
+                theme::palette().text_muted,
             );
             return;
         }
@@ -348,7 +355,7 @@ tabookit::class! {
                 egui::pos2(rect.left(), divider_y),
                 egui::pos2(rect.right(), divider_y),
             ],
-            egui::Stroke::new(1.0_f32, theme::BORDER),
+            egui::Stroke::new(1.0_f32, theme::palette().border),
         );
         // 预览面板
         let preview_rect = egui::Rect::from_min_max(
@@ -385,9 +392,9 @@ tabookit::class! {
                                     );
                                     let painter = ui.painter();
                                     if sel {
-                                        painter.rect_filled(rect, 0.0, theme::BG_HOVER);
+                                        painter.rect_filled(rect, 0.0, theme::palette().bg_hover);
                                     } else if resp.hovered() {
-                                        painter.rect_filled(rect, 0.0, theme::BG_LIGHT);
+                                        painter.rect_filled(rect, 0.0, theme::palette().bg_light);
                                     }
                                     let mid_y = rect.center().y;
                                     let line_label = format!("{}", m.line + 1);
@@ -396,7 +403,7 @@ tabookit::class! {
                                         egui::Align2::RIGHT_CENTER,
                                         &line_label,
                                         egui::FontId::monospace(11.0),
-                                        theme::TEXT_MUTED,
+                                        theme::palette().text_muted,
                                     );
                                     let preview_x = rect.left() + 56.0;
                                     let job = widget::highlight_preview(&m.preview, &m.highlights);
@@ -445,7 +452,7 @@ tabookit::class! {
                 egui::Align2::CENTER_CENTER,
                 t!("search.select_preview"),
                 egui::FontId::proportional(12.0),
-                theme::TEXT_MUTED,
+                theme::palette().text_muted,
             );
             return;
         });
@@ -488,7 +495,7 @@ tabookit::class! {
                 f.layout_no_wrap(
                     "M".to_string(),
                     egui::FontId::monospace(t.code_font_size),
-                    egui::Color32::WHITE,
+                    t.syntax.text,
                 )
                 .size()
                 .y

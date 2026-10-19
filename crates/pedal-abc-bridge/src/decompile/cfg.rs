@@ -45,10 +45,12 @@ pub struct Cfg {
     pub blocks: Vec<Block>,
     /// pc → 块下标
     pub pc_to_block: std::collections::HashMap<usize, usize>,
-    /// 前驱块
+    /// 前驱块（包含异常边，用于支配与循环分析）
     pub preds: Vec<Vec<usize>>,
     /// 支配者集合（位集，doms[b] 含 b 自身与所有支配者）
     pub doms: Vec<Vec<usize>>,
+    /// 后支配者（包含编号为 blocks.len() 的虚拟出口）
+    pub postdoms: Vec<Vec<usize>>,
     /// 自然循环（header 块 → 循环）
     pub loops: std::collections::HashMap<usize, Loop>,
 }
@@ -74,8 +76,13 @@ pub fn build(ins: &[crate::disasm::Ins], code_len: usize, try_blocks: &[TryBlock
                 leaders.insert(ins[i + 1].pc);
             }
         }
+        if matches!(x.meta.mnemonic, "return" | "returnundefined" | "throw") && i + 1 < ins.len() {
+            leaders.insert(ins[i + 1].pc);
+        }
     }
     for tb in try_blocks {
+        leaders.insert(tb.start_pc as usize);
+        leaders.insert((tb.start_pc + tb.length) as usize);
         for cb in &tb.catch_blocks {
             leaders.insert(cb.handler_pc as usize);
         }
@@ -137,7 +144,9 @@ pub fn build(ins: &[crate::disasm::Ins], code_len: usize, try_blocks: &[TryBlock
                         succs.push(t);
                     }
                 }
-            } else if end_idx < ins.len() {
+            } else if end_idx < ins.len()
+                && !matches!(l.meta.mnemonic, "return" | "returnundefined" | "throw")
+            {
                 // fallthrough
                 if let Some(&n) = pc_to_block.get(&ins[end_idx].pc) {
                     succs.push(n);
@@ -164,9 +173,32 @@ pub fn build(ins: &[crate::disasm::Ins], code_len: usize, try_blocks: &[TryBlock
             b.try_of = try_of;
         }
     }
-    // 前驱
+    // 异常入口是真正可达的控制流边；正常后继仍单独保存供 if/else 发射。
+    // 若忽略这条边，共享 finally 的入口会被误判为无前驱，进而打断自然循环。
+    let mut analysis_succs: Vec<_> = blocks.iter().map(|b| b.succs.clone()).collect();
     for (bi, block) in blocks.iter().enumerate() {
-        for &s in &block.succs {
+        for (_, _, handler_pc) in &block.try_of {
+            if let Some(&handler) = pc_to_block.get(&(*handler_pc as usize))
+                && !analysis_succs[bi].contains(&handler)
+            {
+                analysis_succs[bi].push(handler);
+            }
+        }
+    }
+    let mut reachable = vec![false; n_blocks];
+    let mut pending = if n_blocks == 0 { Vec::new() } else { vec![0] };
+    while let Some(b) = pending.pop() {
+        if !reachable[b] {
+            reachable[b] = true;
+            pending.extend(analysis_succs[b].iter().copied());
+        }
+    }
+    // return 后的编译器胶水块不可向可达块贡献虚假的支配前驱。
+    for (bi, successors) in analysis_succs.iter().enumerate() {
+        if !reachable[bi] {
+            continue;
+        }
+        for &s in successors {
             if !preds[s].contains(&bi) {
                 preds[s].push(bi);
             }
@@ -174,9 +206,9 @@ pub fn build(ins: &[crate::disasm::Ins], code_len: usize, try_blocks: &[TryBlock
     }
     // 支配者（迭代数据流，入口 = 块 0）
     let mut doms: Vec<Vec<usize>> = Vec::with_capacity(n_blocks);
-    for b in 0..n_blocks {
-        if b == 0 {
-            doms.push(vec![0]);
+    for (b, reachable) in reachable.iter().enumerate() {
+        if b == 0 || !reachable {
+            doms.push(vec![b]);
         } else {
             doms.push((0..n_blocks).collect());
         }
@@ -185,6 +217,9 @@ pub fn build(ins: &[crate::disasm::Ins], code_len: usize, try_blocks: &[TryBlock
     while changed {
         changed = false;
         for b in 1..n_blocks {
+            if !reachable[b] {
+                continue;
+            }
             let mut new_dom: Option<Vec<usize>> = None;
             for &p in &preds[b] {
                 new_dom = Some(match new_dom {
@@ -208,16 +243,46 @@ pub fn build(ins: &[crate::disasm::Ins], code_len: usize, try_blocks: &[TryBlock
             }
         }
     }
+    // 后支配者必须从真实后继求交；布局上较后的多前驱块不一定是汇合点。
+    let mut postdoms = vec![(0..=n_blocks).collect::<Vec<_>>(); n_blocks + 1];
+    postdoms[n_blocks] = vec![n_blocks];
+    loop {
+        let mut changed = false;
+        for b in (0..n_blocks).rev() {
+            let succs = if blocks[b].succs.is_empty() {
+                &[n_blocks][..]
+            } else {
+                &blocks[b].succs
+            };
+            let mut next = postdoms[succs[0]].clone();
+            for &s in &succs[1..] {
+                next.retain(|p| postdoms[s].contains(p));
+            }
+            next.push(b);
+            next.sort_unstable();
+            next.dedup();
+            if next != postdoms[b] {
+                postdoms[b] = next;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
     // 自然循环：s → h 且 h 支配 s
-    let mut loops = std::collections::HashMap::new();
+    let mut loops: std::collections::HashMap<usize, Loop> = std::collections::HashMap::new();
     for s in 0..n_blocks {
+        if !reachable[s] {
+            continue;
+        }
         for &h in &blocks[s].succs {
-            if h == s || !doms[s].contains(&h) {
+            if !doms[s].contains(&h) {
                 continue;
             }
             // 自然循环体：从 s 反向收集直到 h
             let mut body = vec![h, s];
-            let mut stack = vec![s];
+            let mut stack = if h == s { Vec::new() } else { vec![s] };
             while let Some(x) = stack.pop() {
                 for &p in &preds[x] {
                     if p != h && !body.contains(&p) {
@@ -243,23 +308,42 @@ pub fn build(ins: &[crate::disasm::Ins], code_len: usize, try_blocks: &[TryBlock
                 .succs
                 .iter()
                 .any(|&x| x != h && !body.contains(&x));
-            loops.insert(
-                h,
-                Loop {
-                    header: h,
-                    body,
-                    back_edges: vec![s],
-                    exits,
-                    is_do_while,
-                },
-            );
+            if let Some(existing) = loops.get_mut(&h) {
+                existing.body.extend(body);
+                existing.body.sort_unstable();
+                existing.body.dedup();
+                existing.back_edges.push(s);
+            } else {
+                loops.insert(
+                    h,
+                    Loop {
+                        header: h,
+                        body,
+                        back_edges: vec![s],
+                        exits,
+                        is_do_while,
+                    },
+                );
+            }
         }
+    }
+    for lp in loops.values_mut() {
+        lp.exits = lp
+            .body
+            .iter()
+            .flat_map(|&b| blocks[b].succs.iter().copied())
+            .filter(|s| !lp.body.contains(s))
+            .collect();
+        lp.exits.sort_unstable();
+        lp.exits.dedup();
+        lp.is_do_while = !blocks[lp.header].ends_cond || lp.body.len() == 1;
     }
     Cfg {
         blocks,
         pc_to_block,
         preds,
         doms,
+        postdoms,
         loops,
     }
 }

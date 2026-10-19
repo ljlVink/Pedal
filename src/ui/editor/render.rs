@@ -19,7 +19,7 @@ pub fn paint_editor_bg(ui: &egui::Ui, full_rect: egui::Rect, gutter_w: f32) {
     egui_editor::code_view::paint_editor_bg(ui, full_rect, gutter_w, &t);
 }
 
-/// 只读文本视图（非文本 tab 的回退显示）
+/// 只读源码视图，保留大文本视窗和文本选择能力
 pub fn render_decompiled(
     ui: &mut egui::Ui,
     tab: &mut EditorTab,
@@ -27,19 +27,17 @@ pub fn render_decompiled(
     current: Option<usize>,
 ) {
     let t = theme::editor_theme();
-    let no_line_mapping: [Option<u32>; 0] = [];
-    egui_editor::code_view::code_view(
+    egui_editor::code_view::code_view_readonly_editable_style(
         ui,
-        &tab.decompiled,
-        &tab.decompiled_data.spans,
-        &no_line_mapping,
+        &mut tab.decompiled,
         CodeViewConfig {
+            lang: tab.language,
             matches,
             current,
-            known_classes: None,
+            viewport_override: tab.viewport_override,
             ..CodeViewConfig::new(egui::Id::new(&tab.entry_path).with("decompiled"), &t)
         },
-        &mut tab.layout_cache,
+        &mut tab.editable_layout_cache,
         &mut tab.pending_scroll_to_line,
     );
 }

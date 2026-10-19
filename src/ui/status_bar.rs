@@ -15,11 +15,6 @@ use eframe::egui;
 impl App {
     /// 将 App 业务状态同步到 StatusBar 显示状态
     pub(crate) fn sync_status_bar(&mut self, ctx: &egui::Context) {
-        let is_ark = self.layout.editor.focused_is_ark();
-        let view = self.layout.editor.focused_view();
-        self.layout
-            .status_bar
-            .sync_view(if is_ark { view } else { None });
         let saved_paths: Vec<String> = self
             .workspace
             .jar()

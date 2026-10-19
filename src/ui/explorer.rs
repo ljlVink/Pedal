@@ -118,7 +118,7 @@ tabookit::class! {
             egui::Align2::LEFT_CENTER,
             &t!("explorer.title"),
             egui::FontId::proportional(11.0),
-            theme::TEXT_SECONDARY,
+            theme::palette().text_secondary,
         );
         // 标题栏右侧按钮
         self.render_title_buttons(ui, title_rect);
@@ -224,8 +224,8 @@ jar_modified);
             .order(egui::Order::Foreground)
             .show(ui.ctx(), |ui| {
                 let frame = egui::Frame::NONE
-                    .fill(theme::BG_LIGHT)
-                    .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+                    .fill(theme::palette().bg_light)
+                    .stroke(egui::Stroke::new(1.0_f32, theme::palette().border))
                     .corner_radius(6.0)
                     .shadow(egui::Shadow {
                         spread: 1,
@@ -240,7 +240,7 @@ jar_modified);
                         egui::RichText::new(t!("explorer.rename_title").to_string())
                             .size(12.0)
                             .strong()
-                            .color(theme::TEXT_PRIMARY),
+                            .color(theme::palette().text_primary),
                     );
                     ui.add_space(6.0);
                     let response = ui.add(
@@ -285,7 +285,7 @@ jar_modified);
         if self.roots.is_empty() {
             return;
         }
-        let fbt = flat_button_theme(theme::TEXT_SECONDARY);
+        let fbt = flat_button_theme(theme::palette().text_secondary);
         let btn_size = egui::vec2(22.0, 22.0);
         let mid_y = title_rect.center().y;
         let icon_family = codicon::family();
@@ -302,7 +302,7 @@ jar_modified);
                 FlatButton::new(codicon::COLLAPSE_ALL, &fbt)
                     .font_size(14.0)
                     .font_family(icon_family.clone())
-                    .inactive_color(theme::TEXT_SECONDARY)
+                    .inactive_color(theme::palette().text_secondary)
                     .min_size(btn_size),
             )
             .on_hover_text(t!("explorer.collapse"))
@@ -323,7 +323,7 @@ jar_modified);
                 FlatButton::new(codicon::EXPAND_ALL, &fbt)
                     .font_size(14.0)
                     .font_family(icon_family)
-                    .inactive_color(theme::TEXT_SECONDARY)
+                    .inactive_color(theme::palette().text_secondary)
                     .min_size(btn_size),
             )
             .on_hover_text(t!("explorer.expand"))

@@ -184,9 +184,9 @@ fn render_range(
         if idx >= range.start {
             let is_selected = selected.as_ref().is_some_and(|s| s == &node.path);
             let mod_color = if tab_modified.contains(&node.path) {
-                Some(theme::ACCENT_ORANGE)
+                Some(theme::palette().accent_orange)
             } else if jar_modified.contains(&node.path) {
-                Some(theme::ACCENT_GREEN)
+                Some(theme::palette().accent_green)
             } else {
                 None
             };
@@ -195,7 +195,7 @@ fn render_range(
             } else {
                 0.0
             };
-            let (single, double) = render_row(
+            let (open, toggle) = render_row(
                 ui,
                 node,
                 TreeRowConfig {
@@ -208,17 +208,11 @@ fn render_range(
                 },
                 actions,
             );
-            if node.is_folder {
-                if single {
-                    node.expanded = !node.expanded;
-                }
-            } else {
-                if single {
-                    clicked = Some(node.path.clone());
-                }
-                if double && node.has_children() {
-                    node.expanded = !node.expanded;
-                }
+            if toggle {
+                node.expanded = !node.expanded;
+            }
+            if open {
+                clicked = Some(node.path.clone());
             }
         }
         // 子节点递归
@@ -249,7 +243,7 @@ fn render_range(
     (clicked, consumed)
 }
 
-/// 渲染一行树节点，返回 (单击, 双击)
+/// 渲染一行树节点，返回 (打开文件, 展开或折叠)。
 fn render_row(
     ui: &mut egui::Ui,
     node: &TreeNode,
@@ -273,16 +267,36 @@ fn render_row(
         egui::Id::new("tree_row").with(row_idx),
         egui::Sense::click(),
     );
+    // 箭头独立接收单击，使用整行高度，避免点中箭头时误打开二进制文件。
+    let toggle_response = (node.is_folder || node.has_children()).then(|| {
+        let toggle_rect = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + indent_px + 6.0, rect.center().y),
+            egui::vec2(20.0, rect.height()),
+        )
+        .intersect(rect);
+        ui.interact(
+            toggle_rect,
+            response.id.with("toggle"),
+            egui::Sense::click(),
+        )
+    });
+    let toggle_clicked = toggle_response
+        .as_ref()
+        .is_some_and(egui::Response::clicked);
+    let row_clicked = response.clicked() && !toggle_clicked;
     let painter = ui.painter().with_clip_rect(rect);
     // 选中 / hover 背景动画
     let anim = Anim::new(ui, 0.2).with(&node.path);
-    let will_select = !node.is_folder && !node.label.starts_with('$') && response.clicked();
+    let will_select = !node.is_folder && !node.label.starts_with('$') && row_clicked;
     let bg = anim.select_bg(
         selected,
-        response.hovered(),
+        response.hovered()
+            || toggle_response
+                .as_ref()
+                .is_some_and(egui::Response::hovered),
         will_select,
         theme::verdigris_alpha(38),
-        theme::BG_HOVER,
+        theme::palette().bg_hover,
     );
     if bg.a() > 0 {
         painter.rect_filled(rect, 4.0, bg);
@@ -302,13 +316,13 @@ fn render_row(
         let c = center + rot * egui::vec2(-1.5, 2.5);
         painter.add(egui::Shape::convex_polygon(
             vec![a, b, c],
-            theme::TEXT_MUTED,
+            theme::palette().text_muted,
             egui::Stroke::NONE,
         ));
     }
     x += 12.0 + 6.0;
     let icon_color = node.icon_color();
-    let label_color = mod_color.unwrap_or(theme::TEXT_PRIMARY);
+    let label_color = mod_color.unwrap_or(theme::palette().text_primary);
     // 图标
     painter.text(
         egui::pos2(x + 8.0, y),
@@ -329,7 +343,7 @@ fn render_row(
     // 右键菜单
     if !node.is_folder {
         response.context_menu(|ui| {
-            ui.style_mut().visuals.widgets.hovered.bg_fill = theme::BG_HOVER;
+            ui.style_mut().visuals.widgets.hovered.bg_fill = theme::palette().bg_hover;
             if menu_item_raw(ui, &theme::menu_theme(), &t!("explorer.reveal"), "") {
                 *actions.reveal = Some(node.path.clone());
                 ui.close();
@@ -345,5 +359,139 @@ fn render_row(
             }
         });
     }
-    (response.clicked(), response.double_clicked())
+    let open = !node.is_folder && row_clicked;
+    let toggle = toggle_clicked
+        || (node.is_folder && row_clicked)
+        || (node.has_children() && response.double_clicked() && !toggle_clicked);
+    (open, toggle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context() -> egui::Context {
+        let ctx = egui::Context::default();
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.families.insert(
+            codicon::family(),
+            fonts.families[&egui::FontFamily::Proportional].clone(),
+        );
+        ctx.set_fonts(fonts);
+        ctx
+    }
+
+    fn node(name: &str, is_folder: bool, children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            label: name.into(),
+            path: name.into(),
+            is_folder,
+            expanded: false,
+            children,
+        }
+    }
+
+    fn frame(
+        ctx: &egui::Context,
+        nodes: &mut [TreeNode],
+        events: Vec<egui::Event>,
+    ) -> Option<String> {
+        let selected = None;
+        let empty = HashSet::new();
+        let mut reveal = None;
+        let mut rename = None;
+        let mut delete = None;
+        let mut opened = None;
+        let _ = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(320.0, 240.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                opened = render_tree(
+                    ui,
+                    nodes,
+                    TreeRenderConfig {
+                        selected: &selected,
+                        visible: &empty,
+                        scroll: false,
+                        tab_modified: &empty,
+                        jar_modified: &empty,
+                    },
+                    TreeActions {
+                        reveal: &mut reveal,
+                        rename: &mut rename,
+                        delete: &mut delete,
+                    },
+                );
+            },
+        );
+        opened
+    }
+
+    fn click(ctx: &egui::Context, nodes: &mut [TreeNode], offset_x: f32) -> Option<String> {
+        let rect = ctx
+            .read_response(egui::Id::new("tree_row").with(0usize))
+            .unwrap()
+            .rect;
+        let pos = egui::pos2(rect.left() + offset_x, rect.center().y);
+        let mut opened = None;
+        for pressed in [true, false] {
+            opened = frame(
+                ctx,
+                nodes,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        opened
+    }
+
+    #[test]
+    fn abc_arrow_first_click_toggles_without_opening_hex() {
+        let ctx = context();
+        let mut nodes = vec![node(
+            "modules.abc",
+            false,
+            vec![node("Record.ets", false, vec![])],
+        )];
+        frame(&ctx, &mut nodes, vec![]);
+        assert_eq!(click(&ctx, &mut nodes, 14.0), None);
+        assert!(nodes[0].expanded);
+        assert_eq!(click(&ctx, &mut nodes, 14.0), None);
+        assert!(!nodes[0].expanded);
+        assert_eq!(
+            click(&ctx, &mut nodes, 60.0).as_deref(),
+            Some("modules.abc")
+        );
+        assert!(!nodes[0].expanded);
+    }
+
+    #[test]
+    fn folder_name_single_click_still_toggles_without_opening_a_file() {
+        let ctx = context();
+        let mut nodes = vec![node("ets", true, vec![node("Record.ets", false, vec![])])];
+        frame(&ctx, &mut nodes, vec![]);
+        assert_eq!(click(&ctx, &mut nodes, 60.0), None);
+        assert!(nodes[0].expanded);
+    }
+
+    #[test]
+    fn record_name_first_click_opens_source() {
+        let ctx = context();
+        let mut nodes = vec![node("Record.ets", false, vec![])];
+        frame(&ctx, &mut nodes, vec![]);
+        assert_eq!(click(&ctx, &mut nodes, 60.0).as_deref(), Some("Record.ets"));
+    }
 }

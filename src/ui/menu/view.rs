@@ -15,9 +15,11 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let mt = &theme::menu_theme();
     let state = MenuState::from_app(app);
     if menu_item_if(ui, mt, &t!("editor.view_source"), None, state.has_tab) {
+        ui.close();
         app.layout.editor.set_focused_view(ActiveView::Decompiled);
     }
     if menu_item_if(ui, mt, &t!("menu.hex"), None, state.has_tab) {
+        ui.close();
         app.layout.editor.set_focused_view(ActiveView::Hex);
     }
     ui.separator();
@@ -28,6 +30,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         Some(&app.settings.keymap.toggle_viewport),
         state.has_tab,
     ) {
+        ui.close();
         app.layout.editor.toggle_viewport();
     }
     if menu_item(
@@ -36,6 +39,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         &t!("menu.toggle_explorer"),
         Some(&app.settings.keymap.toggle_explorer),
     ) {
+        ui.close();
         app.layout.explorer_visible = !app.layout.explorer_visible;
     }
 }

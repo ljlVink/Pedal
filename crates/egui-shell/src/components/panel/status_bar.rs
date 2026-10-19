@@ -2,7 +2,7 @@
 //!
 //! 颜色通过 `StatusBarTheme` 注入，不硬编码任何色板。
 //!
-//! @author sky
+//! @author ljlVink
 
 use eframe::egui;
 use std::any::Any;
@@ -69,6 +69,11 @@ tabookit::class! {
             items: Vec::new(),
             theme,
         }
+    }
+
+    /// 更新配色，保留已注册项目及其状态。
+    pub fn set_theme(&mut self, theme: StatusBarTheme) {
+        self.theme = theme;
     }
 
     /// 注册一个 item
@@ -252,6 +257,11 @@ impl ProgressItem {
             alignment,
             visible: false,
         }
+    }
+
+    /// 更新文字颜色，保留进度内容与可见状态。
+    pub fn set_color(&mut self, color: egui::Color32) {
+        self.color = color;
     }
 
     /// 设置显示文本

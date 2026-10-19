@@ -27,34 +27,6 @@ impl App {
         if self.layout.editor.focus_tab(&entry_path) {
             return;
         }
-        // ArkTS：.panda 反汇编条目懒生成
-        if entry_path.ends_with(".panda") {
-            let cached = {
-                let Some(loaded) = self.workspace.loaded() else {
-                    return;
-                };
-                let Some(ark) = &loaded.ark else {
-                    return;
-                };
-                ark.disasm.get(&entry_path).cloned()
-            };
-            if cached.is_none() {
-                let text = {
-                    let Some(loaded) = self.workspace.loaded_mut() else {
-                        return;
-                    };
-                    let Some(ark) = loaded.ark.as_mut() else {
-                        return;
-                    };
-                    ark.build_disasm_entry(&entry_path)
-                };
-                if let Some(text) = text
-                    && let Some(jar) = self.workspace.jar_mut()
-                {
-                    jar.put(&entry_path, text.into_bytes());
-                }
-            }
-        }
         let Some(jar) = self.workspace.jar() else {
             return;
         };
@@ -62,7 +34,19 @@ impl App {
             return;
         };
         let bytes = raw.to_vec();
-        let tab = Self::create_tab(&entry_path, &bytes);
+        let mut tab = Self::create_tab(&entry_path, &bytes);
+        if let Some(ark) = self
+            .workspace
+            .loaded()
+            .and_then(|s| s.ark.as_ref())
+            .filter(|ark| ark.disasm_targets.contains_key(&entry_path))
+        {
+            tab.is_ark = true;
+            tab.is_text = false;
+            if let Some(label) = ark.record_labels.get(&entry_path) {
+                tab.title = label.clone();
+            }
+        }
         self.layout.editor.open_tab(tab);
     }
 
@@ -127,9 +111,9 @@ impl App {
         match result {
             Ok((jar, meta)) => {
                 let paths = jar.paths();
-                self.layout
-                    .file_panel
-                    .set_roots(crate::ui::explorer::tree::build_tree(&jar.name, &paths));
+                let mut roots = tree::build_tree(&jar.name, &paths);
+                tree::apply_file_labels(&mut roots, &meta.record_labels);
+                self.layout.file_panel.set_roots(roots);
                 self.layout.file_panel.selected = None;
                 self.settings.add_recent(&jar.path, &jar.name);
                 if let Err(e) = self.settings.save() {
@@ -224,10 +208,8 @@ impl App {
 
     /// 打开文件选择器，返回 (路径, 是否归档类文件)
     pub(crate) fn pick_file() -> Option<(std::path::PathBuf, bool)> {
-        let jar_label = t!("layout.java_archive");
         let ark_label = t!("layout.ark_archive");
         rfd::FileDialog::new()
-            .add_filter(&*jar_label, &["jar", "zip", "war", "ear"])
             .add_filter(&*ark_label, &["hap", "hsp", "abc", "har", "app"])
             .pick_file()
             .map(|path| {
@@ -293,4 +275,262 @@ fn is_jar_file(path: &Path) -> bool {
         ext.to_ascii_lowercase().as_str(),
         "jar" | "zip" | "war" | "ear"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::Settings;
+    use crate::ui::editor::view_toggle::ActiveView;
+    use crate::ui::layout::Layout;
+
+    fn app_with_workspace(loaded: LoadedState) -> App {
+        let settings = Settings::default();
+        App {
+            layout: Layout::new(&settings),
+            settings,
+            toasts: Default::default(),
+            pending_confirm: None,
+            workspace: Workspace::Loaded(Box::new(loaded)),
+            exporting: None,
+        }
+    }
+
+    #[test]
+    fn abc_explorer_opens_readonly_source_and_enables_disassembly() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("crates/pedal-abc-bridge/tests/fixtures/advanced_recovery/debug.abc");
+        let (jar, meta) = ark::open_ark(&path, &LoadProgress::new()).unwrap();
+        assert!(
+            meta.sources
+                .values()
+                .all(|source| !source.trim().is_empty())
+        );
+        let mut loaded = LoadedState::new(jar);
+        loaded.ark = Some(meta);
+        let mut app = app_with_workspace(loaded);
+
+        let path = "debug.abc/AdvancedRecovery.ets";
+        app.layout.file_panel.pending_open = Some(path.into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert_eq!(tab.entry_path.as_deref(), Some(path));
+        assert!(tab.decompiled.contains("class RecoveryBase"));
+        assert!(tab.is_ark);
+        assert!(!tab.is_text);
+        assert!(tab.active_view == ActiveView::Decompiled);
+        app.layout.editor.cycle_view();
+        assert!(app.layout.editor.focused_tab().unwrap().active_view == ActiveView::Disasm);
+
+        // 编译器注解也能打开，有说明和成员名称，不再显示空白。
+        app.layout.file_panel.pending_open = Some("debug.abc/_ESSlotNumberAnnotation.ets".into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert!(tab.is_ark);
+        assert!(tab.decompiled.contains("_ESSlotNumberAnnotation"));
+        assert!(tab.decompiled.lines().count() >= 2);
+
+        // 原始 ABC 仍是二进制，不被误判为可编辑源码。
+        app.layout.file_panel.pending_open = Some("debug.abc".into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert!(!tab.is_ark);
+        assert!(tab.active_view == ActiveView::Hex);
+    }
+
+    #[test]
+    fn regular_archive_ets_and_panda_entries_still_open_as_text() {
+        let entries = [
+            ("Index.ets".into(), b"const greeting = 'hello';".to_vec()),
+            ("Index.panda".into(), b".record Index".to_vec()),
+        ]
+        .into_iter()
+        .collect();
+        let jar = JarArchive::from_entries(
+            "source.zip".into(),
+            "source.zip".into(),
+            String::new(),
+            0,
+            entries,
+        );
+        let mut app = app_with_workspace(LoadedState::new(jar));
+        for path in ["Index.ets", "Index.panda"] {
+            app.layout.file_panel.pending_open = Some(path.into());
+            app.handle_pending_open();
+            let tab = app.layout.editor.focused_tab().unwrap();
+            assert_eq!(tab.entry_path.as_deref(), Some(path));
+            assert!(tab.is_text);
+            assert!(!tab.is_ark);
+            assert!(!tab.decompiled.is_empty());
+        }
+    }
+
+    #[test]
+    fn explorer_click_opens_in_the_same_frame_without_restoring_old_selection() {
+        let entries = [
+            ("First.ets".into(), b"const first = 1;".to_vec()),
+            ("Second.ets".into(), b"const second = 2;".to_vec()),
+        ]
+        .into_iter()
+        .collect();
+        let jar = JarArchive::from_entries(
+            "source.zip".into(),
+            "source.zip".into(),
+            String::new(),
+            0,
+            entries,
+        );
+        let roots = tree::build_tree(&jar.name, &jar.paths());
+        let mut app = app_with_workspace(LoadedState::new(jar));
+        app.layout.file_panel.set_roots(roots);
+        app.layout.explorer_visible = true;
+        app.layout.file_panel.pending_open = Some("First.ets".into());
+        app.handle_pending_open();
+
+        let ctx = egui::Context::default();
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.families.insert(
+            crate::appearance::codicon::family(),
+            fonts.families[&egui::FontFamily::Proportional].clone(),
+        );
+        ctx.set_fonts(fonts);
+        let shell = crate::appearance::theme::shell_theme();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let _ = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| app.render(ui, &shell),
+        );
+        let row = ctx
+            .read_response(egui::Id::new("tree_row").with(2usize))
+            .unwrap()
+            .rect;
+        let pos = egui::pos2(row.left() + 80.0, row.center().y);
+        for pressed in [true, false] {
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    events: vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| app.render(ui, &shell),
+            );
+        }
+        assert_eq!(
+            app.layout
+                .editor
+                .focused_tab()
+                .unwrap()
+                .entry_path
+                .as_deref(),
+            Some("Second.ets")
+        );
+        assert_eq!(
+            app.layout.file_panel.selected.as_deref(),
+            Some("Second.ets")
+        );
+        assert!(app.layout.file_panel.pending_open.is_none());
+        assert_eq!(app.layout.editor.dock_state.iter_all_tabs().count(), 2);
+    }
+
+    #[test]
+    fn camera_union_records_open_search_and_export_without_descriptor_directories() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test_examples/system_framework/camera_framework_taihe_abc.abc");
+        if !fixture.exists() {
+            eprintln!("optional camera framework corpus is absent");
+            return;
+        }
+        let (jar, meta) = ark::open_ark(&fixture, &LoadProgress::new()).unwrap();
+        assert_eq!(meta.record_labels.len(), 4);
+        assert_eq!(meta.sources.len(), meta.abcs[0].1.classes.len());
+        let labels = meta.record_labels.clone();
+        let mut roots = tree::build_tree(&jar.name, &jar.paths());
+        tree::apply_file_labels(&mut roots, &labels);
+        let filter_index = tree::build_filter_index(&roots);
+        assert!(!filter_index.iter().any(|e| e.label_lower.contains("{ul")));
+        let mut loaded = LoadedState::new(jar);
+        loaded.ark = Some(meta);
+        let mut app = app_with_workspace(loaded);
+        app.rebuild_search_index();
+
+        let output = std::env::temp_dir().join(format!(
+            "pedal-union-export-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&output).unwrap();
+        for (path, label) in &labels {
+            assert_eq!(
+                path.matches('/').count(),
+                1,
+                "union must be one leaf: {path}"
+            );
+            assert!(!path.contains('|'));
+            assert!(filter_index.iter().any(|e| e.path == *path
+                && !e.is_folder
+                && e.label_lower == label.to_ascii_lowercase()));
+            app.layout.file_panel.pending_open = Some(path.clone());
+            app.handle_pending_open();
+            let tab = app.layout.editor.focused_tab().unwrap();
+            assert_eq!(tab.title, *label);
+            assert_eq!(tab.entry_path.as_deref(), Some(path.as_str()));
+            assert!(tab.is_ark && !tab.decompiled.is_empty());
+            assert!(tab.decompiled.contains(" | "));
+            let loaded = app.workspace.loaded().unwrap();
+            let ark = loaded.ark.as_ref().unwrap();
+            let (abc_idx, class_off) = ark.disasm_targets[path];
+            assert!(
+                ark.abcs[abc_idx]
+                    .1
+                    .classes
+                    .iter()
+                    .any(|c| c.offset == class_off && c.name.starts_with("{U"))
+            );
+            assert!(
+                loaded
+                    .search_index
+                    .as_ref()
+                    .unwrap()
+                    .entries
+                    .iter()
+                    .any(|e| e.entry_path == *path && format!("{}.ets", e.class_name) == *label)
+            );
+            // 使用实际虚拟路径执行磁盘写入，覆盖 Windows 文件名限制。
+            let exported = output.join(path);
+            std::fs::create_dir_all(exported.parent().unwrap()).unwrap();
+            std::fs::write(&exported, &ark.sources[path]).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&exported).unwrap(),
+                ark.sources[path]
+            );
+            std::fs::remove_file(exported).unwrap();
+        }
+        std::fs::remove_dir(output.join("camera_framework_taihe_abc.abc")).unwrap();
+        std::fs::remove_dir(output).unwrap();
+        assert!(
+            labels
+                .values()
+                .any(|label| label == "(BusinessError | null).ets")
+        );
+        assert!(
+            labels
+                .values()
+                .any(|label| label == "(Image | Picture).ets")
+        );
+        assert!(labels.values().any(|label| label == "(null | Object).ets"));
+    }
 }

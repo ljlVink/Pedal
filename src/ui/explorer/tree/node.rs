@@ -35,9 +35,9 @@ tabookit::class! {
 
     pub fn icon_color(&self) -> egui::Color32 {
         if self.is_folder {
-            theme::ACCENT_ORANGE
+            theme::palette().accent_orange
         } else {
-            theme::TEXT_SECONDARY
+            theme::palette().text_secondary
         }
     }
 

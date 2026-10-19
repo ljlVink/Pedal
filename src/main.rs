@@ -12,6 +12,7 @@ rust_i18n::i18n!("locales", fallback = "zh-CN");
 
 mod app;
 mod appearance;
+mod cli;
 mod settings;
 mod task;
 mod ui;
@@ -20,38 +21,25 @@ use app::App;
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    // CLI 和 GUI 共用语言配置；无头命令在任何窗口或图形上下文创建前完成。
+    let saved_settings = settings::Settings::load_for_locale();
+    rust_i18n::set_locale(saved_settings.language.code());
+    let initial_archive = match cli::parse(std::env::args_os().skip(1)) {
+        Ok(cli::Command::Gui(path)) => path.filter(|p| p.exists()),
+        command => std::process::exit(cli::run(command)),
+    };
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .init();
-    // 命令行参数：第一个参数为初始打开的归档路径（新窗口模式使用）
-    let initial_archive = std::env::args()
-        .nth(1)
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.exists());
-    // 从持久化配置中读取语言并设置 locale
-    let saved_settings = settings::Settings::load_for_locale();
-    rust_i18n::set_locale(saved_settings.language.code());
+    appearance::theme::set_mode(saved_settings.theme);
     let options = appearance::ShellOptions {
         title: "Pedal".to_owned(),
         size: [1280.0, 800.0],
-        theme: appearance::ShellTheme {
-            bg: appearance::theme::BG_DARK,
-            bg_hover: appearance::theme::BG_HOVER,
-            bg_active: appearance::theme::BG_LIGHT,
-            text_primary: appearance::theme::TEXT_PRIMARY,
-            text_secondary: appearance::theme::TEXT_SECONDARY,
-            text_muted: appearance::theme::TEXT_MUTED,
-            accent: appearance::theme::VERDIGRIS,
-            separator: appearance::theme::BORDER,
-            icon_font: eframe::egui::FontFamily::Name("codicon".into()),
-            caption_hover: appearance::theme::CAPTION_HOVER,
-            close_hover: appearance::theme::CLOSE_HOVER,
-            title_bar_height: appearance::theme::TITLE_BAR_HEIGHT,
-            window: appearance::theme::window_config(),
-        },
+        theme: appearance::theme::shell_theme(),
     };
-    appearance::run(options, move |_cc| {
+    appearance::run(options, move |cc| {
         let mut app = App::new();
+        appearance::theme::apply(&cc.egui_ctx, app.settings.theme);
         if let Some(path) = &initial_archive {
             app.open_jar(path);
         }
@@ -64,6 +52,10 @@ struct PervApp {
 }
 
 impl appearance::AppContent for PervApp {
+    fn shell_theme(&self) -> Option<appearance::ShellTheme> {
+        Some(appearance::theme::shell_theme())
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, theme: &appearance::ShellTheme) {
         self.app.render(ui, theme);
     }

@@ -96,7 +96,7 @@ pub struct RecentEntry {
 pub struct KeymapSettings {
     /// 切换资源管理器
     pub toggle_explorer: KeyBind,
-    /// 打开 JAR
+    /// 打开文件（字段名保留以兼容已有快捷键配置）
     pub open_jar: KeyBind,
     /// 打开查找
     pub find: KeyBind,
@@ -153,6 +153,8 @@ tabookit::class! {
     pub struct Settings {
         /// 界面语言
         pub language: Language,
+        /// 界面主题
+        pub theme: theme::ThemeMode,
         /// 打开第二个项目时的窗口策略
         pub open_behavior: OpenBehavior,
         /// 快捷键设置
@@ -254,6 +256,28 @@ fn render_general(draft: &mut Settings, ui: &mut egui::Ui, st: &SettingsTheme) -
     ui.horizontal(|ui| {
         ui.add_space(16.0);
         ui.label(
+            egui::RichText::new(t!("settings.theme"))
+                .size(13.0)
+                .color(st.text_primary),
+        );
+        ui.add_space(8.0);
+        let current = draft.theme;
+        egui::ComboBox::from_id_salt("theme_combo")
+            .selected_text(current.label())
+            .width(120.0)
+            .show_ui(ui, |ui| {
+                for &mode in theme::ThemeMode::ALL {
+                    if ui.selectable_label(current == mode, mode.label()).clicked() {
+                        draft.theme = mode;
+                        changed = true;
+                    }
+                }
+            });
+    });
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add_space(16.0);
+        ui.label(
             egui::RichText::new(t!("settings.language").to_string())
                 .size(13.0)
                 .color(st.text_primary),
@@ -308,7 +332,7 @@ fn render_keymap(km: &mut KeymapSettings, ui: &mut egui::Ui, st: &SettingsTheme)
     let mut changed = false;
     section_header(ui, st, &t!("settings.section_general"));
     changed |= keybind_rows!(ui, st, hint, km, defaults,
-        t!("settings.open_jar") => open_jar,
+        t!("settings.open_file") => open_jar,
         t!("settings.toggle_explorer") => toggle_explorer,
         t!("settings.open_settings") => open_settings,
     );

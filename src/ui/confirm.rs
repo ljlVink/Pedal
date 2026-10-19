@@ -155,7 +155,7 @@ impl App {
         let message = t!("confirm.unsaved_message");
         let confirm_label = t!("confirm.discard");
         let cancel_label = t!("confirm.cancel");
-        let confirm_color = Some(theme::ACCENT_RED);
+        let confirm_color = Some(theme::palette().accent_red);
         let mut dialog = ConfirmDialog::new(&title, &message)
             .confirm_label(&confirm_label)
             .cancel_label(&cancel_label)

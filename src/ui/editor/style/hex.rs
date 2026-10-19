@@ -1,6 +1,7 @@
 //! Hex 视图桥接层：映射 classview 主题色到 egui-hex-view
 //!
 //! @author sky
+//! @author ljlVink
 
 use crate::appearance::theme;
 use rust_i18n::t;
@@ -8,27 +9,27 @@ use rust_i18n::t;
 /// classview 主题色映射到 HexTheme
 pub fn hex_theme() -> egui_hex_view::HexTheme {
     egui_hex_view::HexTheme {
-        addr_color: theme::TEXT_MUTED,
-        addr_hover_color: theme::TEXT_SECONDARY,
-        hex_null_color: theme::HEX_NULL,
-        hex_printable_color: theme::SYN_NUMBER,
-        hex_control_color: theme::TEXT_MUTED,
-        hex_high_color: theme::ACCENT_ORANGE,
-        ascii_color: theme::SYN_STRING,
-        ascii_dot_color: theme::TEXT_MUTED,
-        text_primary: theme::TEXT_PRIMARY,
-        text_secondary: theme::TEXT_SECONDARY,
-        text_muted: theme::TEXT_MUTED,
-        accent: theme::VERDIGRIS,
-        hover_row_bg: theme::HEX_ROW_HOVER,
-        hover_byte_bg: theme::HEX_BYTE_HOVER,
-        selection_bg: theme::HEX_SELECTION,
-        cursor_bg: theme::HEX_CURSOR,
-        separator: theme::HEX_SEPARATOR,
-        border: theme::BORDER,
-        inspector_bg: theme::BG_DARKEST,
-        header_color: theme::TEXT_MUTED,
-        header_bg: theme::BG_DARKEST,
+        addr_color: theme::palette().text_muted,
+        addr_hover_color: theme::palette().text_secondary,
+        hex_null_color: theme::palette().hex_null,
+        hex_printable_color: theme::palette().syn_number,
+        hex_control_color: theme::palette().text_muted,
+        hex_high_color: theme::palette().accent_orange,
+        ascii_color: theme::palette().syn_string,
+        ascii_dot_color: theme::palette().text_muted,
+        text_primary: theme::palette().text_primary,
+        text_secondary: theme::palette().text_secondary,
+        text_muted: theme::palette().text_muted,
+        accent: theme::palette().verdigris,
+        hover_row_bg: theme::palette().hex_row_hover,
+        hover_byte_bg: theme::palette().hex_byte_hover,
+        selection_bg: theme::palette().hex_selection,
+        cursor_bg: theme::palette().hex_cursor,
+        separator: theme::palette().hex_separator,
+        border: theme::palette().border,
+        inspector_bg: theme::palette().bg_darkest,
+        header_color: theme::palette().text_muted,
+        header_bg: theme::palette().bg_darkest,
         search_bg: theme::verdigris_alpha(25),
         search_current_bg: theme::verdigris_alpha(60),
         labels: egui_hex_view::HexLabels {

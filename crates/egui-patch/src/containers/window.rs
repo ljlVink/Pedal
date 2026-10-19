@@ -36,6 +36,7 @@ use super::{Area, Frame, Resize, ScrollArea, area, resize};
 pub struct Window<'open> {
     title: WidgetText,
     open: Option<&'open mut bool>,
+    close_button_hit_size: Option<Vec2>,
     area: Area,
     frame: Option<Frame>,
     resize: Resize,
@@ -56,6 +57,7 @@ impl<'open> Window<'open> {
         Self {
             title,
             open: None,
+            close_button_hit_size: None,
             area,
             frame: None,
             resize: Resize::default()
@@ -120,6 +122,14 @@ impl<'open> Window<'open> {
     #[inline]
     pub fn open(mut self, open: &'open mut bool) -> Self {
         self.open = Some(open);
+        self
+    }
+
+    /// 设置关闭按钮的点击区域，保留图标尺寸，并限制在标题栏内。
+    /// 默认使用图标尺寸；小于图标的设置不会缩小点击区域。
+    #[inline]
+    pub fn close_button_hit_size(mut self, size: Vec2) -> Self {
+        self.close_button_hit_size = Some(size);
         self
     }
 
@@ -465,6 +475,7 @@ impl Window<'_> {
         let Window {
             title,
             mut open,
+            close_button_hit_size,
             area,
             frame,
             resize,
@@ -588,6 +599,7 @@ impl Window<'_> {
                     collapsible,
                     window_frame,
                     title_bar_height_with_margin,
+                    close_button_hit_size,
                 );
                 resize.min_size.x = resize.min_size.x.at_least(title_bar.inner_rect.width()); // Prevent making window smaller than title bar width
 
@@ -1179,6 +1191,7 @@ fn paint_frame_interaction(ui: &Ui, rect: Rect, interaction: ResizeInteraction) 
 
 struct TitleBar {
     window_frame: Frame,
+    close_button_hit_size: Option<Vec2>,
 
     /// Prepared text in the title
     title_galley: Arc<Galley>,
@@ -1198,6 +1211,7 @@ impl TitleBar {
         collapsible: bool,
         window_frame: Frame,
         title_bar_height_with_margin: f32,
+        close_button_hit_size: Option<Vec2>,
     ) -> Self {
         if false {
             ui.debug_painter()
@@ -1220,7 +1234,12 @@ impl TitleBar {
 
         let minimum_width = if collapsible || show_close_button {
             // If at least one button is shown we make room for both buttons (since title should be centered):
-            2.0 * (left_pad + button_size.x + item_spacing.x) + title_galley.size().x
+            let hit_width = if show_close_button {
+                close_button_hit_size.map_or(button_size.x, |size| size.x.max(button_size.x))
+            } else {
+                button_size.x
+            };
+            2.0 * (left_pad + hit_width + item_spacing.x) + title_galley.size().x
         } else {
             left_pad + title_galley.size().x + left_pad
         };
@@ -1234,6 +1253,7 @@ impl TitleBar {
 
         Self {
             window_frame,
+            close_button_hit_size,
             title_galley,
             inner_rect: min_rect, // First estimate - will be refined later
         }
@@ -1283,9 +1303,12 @@ impl TitleBar {
             });
         }
 
+        let mut close_button_left = title_inner_rect.right();
         if let Some(open) = open {
             // Add close button now that we know our full width:
-            if self.close_button_ui(ui).clicked() {
+            let response = self.close_button_ui(ui);
+            close_button_left = response.rect.left();
+            if response.clicked() {
                 *open = false;
             }
         }
@@ -1315,7 +1338,8 @@ impl TitleBar {
         }
 
         // Don't cover the close- and collapse buttons:
-        let double_click_rect = title_inner_rect.shrink2(vec2(32.0, 0.0));
+        let mut double_click_rect = title_inner_rect.shrink2(vec2(32.0, 0.0));
+        double_click_rect.max.x = double_click_rect.max.x.min(close_button_left);
 
         if false {
             ui.debug_painter()
@@ -1345,7 +1369,11 @@ impl TitleBar {
         let button_size = Vec2::splat(ui.spacing().icon_width);
         let button_rect = Rect::from_center_size(button_center, button_size);
         let button_rect = button_rect.round_to_pixels(ui.pixels_per_point());
-        close_button(ui, button_rect)
+        let hit_rect = self.close_button_hit_size.map_or(button_rect, |size| {
+            Rect::from_center_size(button_rect.center(), size.max(button_size))
+                .intersect(self.inner_rect)
+        });
+        close_button(ui, button_rect, hit_rect)
     }
 }
 
@@ -1359,9 +1387,9 @@ impl TitleBar {
 /// - `rect`: The rectangular area to fit the button in
 ///
 /// Returns the result of a click on a button if it was pressed
-fn close_button(ui: &mut Ui, rect: Rect) -> Response {
+fn close_button(ui: &mut Ui, rect: Rect, hit_rect: Rect) -> Response {
     let close_id = ui.auto_id_with("window_close_button");
-    let response = ui.interact(rect, close_id, Sense::click());
+    let response = ui.interact(hit_rect, close_id, Sense::click());
     response
         .widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), "Close window"));
 

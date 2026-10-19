@@ -13,4 +13,8 @@ pub mod isa;
 mod isa_gen;
 pub mod reader;
 
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod test_support;
+
 pub use error::AbcError;

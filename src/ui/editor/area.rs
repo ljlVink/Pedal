@@ -107,12 +107,12 @@ tabookit::class! {
                 egui::Align2::RIGHT_CENTER,
                 *action,
                 font_action.clone(),
-                theme::TEXT_MUTED,
+                theme::palette().text_muted,
             );
             let keybind_galley = painter.layout_no_wrap(
                 keybind.to_string(),
                 font_keybind.clone(),
-                theme::TEXT_MUTED,
+                theme::palette().text_muted,
             );
             let kb_pos = egui::pos2(center.x + 8.0, mid_y - keybind_galley.size().y / 2.0);
             let kb_rect = egui::Rect::from_min_size(kb_pos, keybind_galley.size())
@@ -120,11 +120,11 @@ tabookit::class! {
             painter.rect(
                 kb_rect,
                 egui::CornerRadius::same(3),
-                theme::BG_MEDIUM,
-                egui::Stroke::new(1.0_f32, theme::BORDER),
+                theme::palette().bg_medium,
+                egui::Stroke::new(1.0_f32, theme::palette().border),
                 egui::StrokeKind::Outside,
             );
-            painter.galley(kb_pos, keybind_galley, theme::TEXT_MUTED);
+            painter.galley(kb_pos, keybind_galley, theme::palette().text_muted);
         }
         let drop_y = start_y + hints_h + gap + line_height / 2.0;
         painter.text(
@@ -132,7 +132,7 @@ tabookit::class! {
             egui::Align2::CENTER_CENTER,
             &t!("editor.drop_hint"),
             font_hint,
-            theme::TEXT_MUTED,
+            theme::palette().text_muted,
         );
         ui.allocate_rect(rect, egui::Sense::hover());
     }
@@ -191,11 +191,6 @@ tabookit::class! {
         Some(self.focused_tab()?.active_view)
     }
 
-    /// 聚焦 tab 是否 ArkTS record
-    pub fn focused_is_ark(&mut self) -> bool {
-        self.focused_tab().is_some_and(|t| t.is_ark)
-    }
-
     /// 当前聚焦 tab 的条目路径
     pub fn focused_entry_path(&mut self) -> Option<String> {
         self.focused_tab()?.entry_path.clone()
@@ -237,6 +232,15 @@ tabookit::class! {
         }
     }
 
+    /// 主题切换时重建文字颜色，保留文本、视图、选中项及滚动位置。
+    pub fn clear_layout_caches(&mut self) {
+        for (_, tab) in self.dock_state.iter_all_tabs_mut() {
+            tab.layout_cache = None;
+            tab.editable_layout_cache = None;
+            tab.disasm_layout_cache = None;
+        }
+    }
+
     /// 循环切换聚焦 tab 的视图（仅 ArkTS record 的源码/反汇编双视图）
     pub fn cycle_view(&mut self) {
         if let Some(tab) = self.focused_tab()
@@ -265,7 +269,7 @@ tabookit::class! {
     /// 切换当前 tab 的视窗模式
     pub fn toggle_viewport(&mut self) {
         let tab = tabookit::or!(self.focused_tab(), return);
-        if !tab.is_text {
+        if !tab.is_text && !tab.is_ark {
             return;
         }
         let currently_on = match tab.viewport_override {

@@ -11,6 +11,9 @@
 use crate::error::{AbcError, AbcResult};
 use crate::reader::Reader;
 
+pub mod debug;
+mod proto;
+
 /// 文件头（两种布局的并集，按 kind 解释）
 #[derive(Debug, Clone)]
 pub struct FileHeader {
@@ -79,6 +82,8 @@ pub struct IndexHeader {
 /// 基础类型编码（Type u32 < 0x0d 时）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BasicType {
+    /// void（仅用于方法返回类型）
+    Void,
     /// u1
     U1,
     /// i8
@@ -106,7 +111,7 @@ pub enum BasicType {
 }
 
 /// Type：基础类型或 class 引用
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     /// 基础类型
     Basic(BasicType),
@@ -262,7 +267,7 @@ pub struct ProtoInfo {
     pub ret: Type,
     /// 参数类型
     pub params: Vec<Type>,
-    /// 参数引用类型（class 偏移），与 params 中 Ref 一一对应
+    /// 引用类型（class 偏移），按返回值、参数的顺序仅收集 Ref
     pub ref_types: Vec<u32>,
 }
 
@@ -322,7 +327,7 @@ pub enum LiteralValue {
     /// 字符串偏移数组
     ArrayString(Vec<u32>),
     /// literalbuffer 索引
-    LiteralBufferIndex(u16),
+    LiteralBufferIndex(u32),
     /// literalarray 偏移
     LiteralArray(u32),
     /// 内建类型索引
@@ -473,7 +478,7 @@ impl AbcFile {
                 let num_literalarrays = r.u32()?;
                 let literalarray_idx_off = r.u32()?;
                 let num_lnps = r.u32()?;
-                let _lnp_idx_off = r.u32()?;
+                let lnp_idx_off = r.u32()?;
                 let num_index_regions = r.u32()?;
                 let index_section_off = r.u32()?;
                 FileHeader {
@@ -484,7 +489,7 @@ impl AbcFile {
                     num_classes,
                     class_idx_off,
                     num_lnps,
-                    lnp_idx_off: 0,
+                    lnp_idx_off,
                     num_literalarrays,
                     literalarray_idx_off,
                     num_index_regions,
@@ -829,35 +834,37 @@ impl AbcFile {
                 function_kind(((index_data >> 16) & 0xff) as u8),
             )
         };
+        let proto_off = self.resolve_method_proto(offset, proto_idx)?;
+        let class_off = match self.resolve_type(offset, class_idx)? {
+            Type::Ref(off) => off,
+            Type::Basic(_) => 0,
+        };
         let mut code = None;
         let mut debug_info_off = 0;
-        loop {
-            let tag = r.u8()?;
-            match tag {
-                0x00 => break,
-                0x01 => {
-                    let off = r.u32()?;
-                    code = Some(self.read_code(off)?);
+        if !foreign {
+            loop {
+                let tag = r.u8()?;
+                match tag {
+                    0x00 => break,
+                    0x01 => {
+                        let off = r.u32()?;
+                        code = Some(self.read_code(off)?);
+                    }
+                    0x02 => {
+                        r.skip(1)?;
+                    }
+                    0x05 => debug_info_off = r.u32()?,
+                    0x06 => {
+                        let _annotation_off = r.u32()?;
+                    }
+                    _ => r.skip(4)?,
                 }
-                0x02 => {
-                    r.skip(1)?;
-                }
-                0x05 => debug_info_off = r.u32()?,
-                0x06 => {
-                    let _annotation_off = r.u32()?;
-                }
-                0x09 if foreign => {
-                    // ForeignMethod 无额外数据
-                }
-                _ => r.skip(4)?,
             }
         }
-        let _ = class_idx;
-        let _ = proto_idx;
         Ok(MethodInfo {
             offset,
-            class_off: 0,
-            proto_off: 0,
+            class_off,
+            proto_off,
             name,
             header_index,
             kind,
@@ -871,7 +878,7 @@ impl AbcFile {
     pub fn method_at(&self, off: u32) -> AbcResult<MethodInfo> {
         let mut r = Reader::new(&self.data);
         r.seek(off as usize)?;
-        self.read_method(&mut r, false)
+        self.read_method(&mut r, self.is_foreign(off))
     }
 
     /// 解析 Code 结构
@@ -916,68 +923,14 @@ impl AbcFile {
         })
     }
 
-    /// 解析 proto（签名）
-    pub fn read_proto(&self, off: u32) -> AbcResult<ProtoInfo> {
-        let mut r = Reader::new(&self.data);
-        r.seek(off as usize)?;
-        // shorty：4 位一组，0 结尾；随后 ref 类型 u16 索引列表
-        let mut ret = Type::Basic(BasicType::Any);
-        let mut params = Vec::new();
-        let elem = |v: u16, idx: usize, out: &mut Vec<Type>| -> bool {
-            let shift = (idx % 4) * 4;
-            let t = (v >> shift) & 0xf;
-            if t == 0 {
-                return false;
-            }
-            out.push(Type::Basic(basic_from_code(t)));
-            true
-        };
-        let mut all = Vec::new();
-        let mut v = r.u16()?;
-        let mut idx = 0;
-        loop {
-            if !elem(v, idx, &mut all) {
-                break;
-            }
-            idx += 1;
-            if idx % 4 == 0 {
-                v = r.u16()?;
-            }
-        }
-        if let Some(first) = all.first().copied() {
-            ret = first;
-            params = all[1..].to_vec();
-        }
-        // ref 类型（非基础类型的参数/返回值）
-        let mut ref_types = Vec::new();
-        for t in std::iter::once(ret).chain(params.iter().copied()) {
-            if matches!(t, Type::Basic(_)) {
-                ref_types.push(0);
-            } else {
-                let idx = r.u16()? as u32;
-                let resolved = self
-                    .resolve_type(off, idx)
-                    .unwrap_or(Type::Basic(BasicType::Any));
-                ref_types.push(match resolved {
-                    Type::Ref(o) => o,
-                    Type::Basic(_) => 0,
-                });
-            }
-        }
-        Ok(ProtoInfo {
-            ret,
-            params,
-            ref_types,
-        })
-    }
-
     /// 解析 literal 数组
     /// 截断式读取：超过 4096 个元素时保留前 4096 个，返回值附带总数。
     /// 防御超长字面量表（数值大表）被完整物化导致的内存/CPU 失控
     pub fn read_literal_array_truncated(&self, off: u32) -> AbcResult<TruncatedLiteralArray> {
         let mut r = Reader::new(&self.data);
         r.seek(off as usize)?;
-        let num = r.u32()? as usize;
+        // PANDA 的计数包含 tag 和 value，每个条目占两个计数单位。
+        let num = (r.u32()? as usize).div_ceil(2);
         let keep = num.min(LITERAL_RENDER_LIMIT);
         let mut values = Vec::with_capacity(keep);
         for _ in 0..keep {
@@ -989,7 +942,8 @@ impl AbcFile {
     pub fn read_literal_array(&self, off: u32) -> AbcResult<Vec<LiteralValue>> {
         let mut r = Reader::new(&self.data);
         r.seek(off as usize)?;
-        let num = r.u32()? as usize;
+        // PANDA 的计数包含 tag 和 value，每个条目占两个计数单位。
+        let num = (r.u32()? as usize).div_ceil(2);
         let mut out = Vec::with_capacity(num.min(4096));
         for _ in 0..num {
             out.push(read_literal_value(&mut r)?);
@@ -1122,7 +1076,7 @@ fn read_literal_value(r: &mut Reader) -> AbcResult<LiteralValue> {
         0x05 => LiteralValue::String(r.u32()?),
         0x06 => LiteralValue::Method(r.u32()?),
         0x07 => LiteralValue::GeneratorMethod(r.u32()?),
-        0x08 => LiteralValue::Accessor(r.u32()?),
+        0x08 => LiteralValue::Accessor(r.u8()? as u32),
         0x09 => LiteralValue::MethodAffiliate(r.u16()?),
         0x0a => {
             let n = (r.u32()? as usize)
@@ -1245,13 +1199,16 @@ fn read_literal_value(r: &mut Reader) -> AbcResult<LiteralValue> {
             LiteralValue::ArrayString(a)
         }
         0x16 => LiteralValue::AsyncGeneratorMethod(r.u32()?),
-        0x17 => LiteralValue::LiteralBufferIndex(r.u16()?),
+        0x17 => LiteralValue::LiteralBufferIndex(r.u32()?),
         0x18 => LiteralValue::LiteralArray(r.u32()?),
-        0x19 => LiteralValue::BuiltinTypeIndex(r.u16()?),
+        0x19 => LiteralValue::BuiltinTypeIndex(r.u8()? as u16),
         0x1a => LiteralValue::Getter(r.u32()?),
         0x1b => LiteralValue::Setter(r.u32()?),
         0x1c => LiteralValue::EtsImplements(r.u32()?),
-        0xff => LiteralValue::Null,
+        0xff => {
+            r.u8()?;
+            LiteralValue::Null
+        }
         other => {
             return Err(AbcError::UnknownTag {
                 tag: other,

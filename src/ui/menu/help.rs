@@ -12,6 +12,7 @@ use rust_i18n::t;
 pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let mt = &theme::menu_theme();
     if menu_item(ui, mt, &t!("menu.about"), None) {
+        ui.close();
         app.layout.about_open = true;
     }
 }

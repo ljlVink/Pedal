@@ -18,7 +18,7 @@ pub fn render_group_header(ui: &mut egui::Ui, group: &SearchResultGroup) -> bool
     );
     let painter = ui.painter();
     if resp.hovered() {
-        painter.rect_filled(rect, 0.0, theme::BG_HOVER);
+        painter.rect_filled(rect, 0.0, theme::palette().bg_hover);
     }
     let mid_y = rect.center().y;
     let chevron = if group.expanded {
@@ -31,21 +31,21 @@ pub fn render_group_header(ui: &mut egui::Ui, group: &SearchResultGroup) -> bool
         egui::Align2::LEFT_CENTER,
         chevron,
         egui::FontId::new(12.0, codicon::family()),
-        theme::TEXT_MUTED,
+        theme::palette().text_muted,
     );
     painter.text(
         egui::pos2(rect.left() + 24.0, mid_y),
         egui::Align2::LEFT_CENTER,
         codicon::SYMBOL_CLASS,
         egui::FontId::new(12.0, codicon::family()),
-        theme::VERDIGRIS,
+        theme::palette().verdigris,
     );
     painter.text(
         egui::pos2(rect.left() + 40.0, mid_y),
         egui::Align2::LEFT_CENTER,
         &group.class_name,
         egui::FontId::proportional(12.0),
-        theme::TEXT_PRIMARY,
+        theme::palette().text_primary,
     );
     let info = format!(
         "{}  ({})",
@@ -57,7 +57,7 @@ pub fn render_group_header(ui: &mut egui::Ui, group: &SearchResultGroup) -> bool
         egui::Align2::RIGHT_CENTER,
         &info,
         egui::FontId::proportional(11.0),
-        theme::TEXT_MUTED,
+        theme::palette().text_muted,
     );
     resp.clicked()
 }
@@ -76,15 +76,15 @@ pub fn highlight_preview(text: &str, ranges: &[(usize, usize)]) -> egui::text::L
         let start = start.min(len);
         let end = end.min(len);
         if start > pos {
-            job.append(&text[pos..start], 0.0, fmt(theme::TEXT_SECONDARY));
+            job.append(&text[pos..start], 0.0, fmt(theme::palette().text_secondary));
         }
         if end > start {
-            job.append(&text[start..end], 0.0, fmt(theme::VERDIGRIS));
+            job.append(&text[start..end], 0.0, fmt(theme::palette().verdigris));
         }
         pos = end;
     }
     if pos < len {
-        job.append(&text[pos..], 0.0, fmt(theme::TEXT_SECONDARY));
+        job.append(&text[pos..], 0.0, fmt(theme::palette().text_secondary));
     }
     job
 }
@@ -97,7 +97,7 @@ pub fn separator(ui: &mut egui::Ui) {
             egui::pos2(avail.left(), avail.top()),
             egui::pos2(avail.right(), avail.top()),
         ],
-        egui::Stroke::new(1.0_f32, theme::BORDER),
+        egui::Stroke::new(1.0_f32, theme::palette().border),
     );
     ui.allocate_space(egui::vec2(avail.width(), 1.0));
 }

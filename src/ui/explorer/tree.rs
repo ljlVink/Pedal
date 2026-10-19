@@ -12,6 +12,21 @@ pub use build::build_tree;
 pub use node::TreeNode;
 pub use render::{TreeActions, TreeRenderConfig, render_tree};
 
+/// 仅替换文件显示名；打开、搜索定位及导出仍使用原始条目路径。
+pub fn apply_file_labels(
+    nodes: &mut [TreeNode],
+    labels: &std::collections::HashMap<String, String>,
+) {
+    for node in nodes {
+        if !node.is_folder
+            && let Some(label) = labels.get(&node.path)
+        {
+            node.label = label.clone();
+        }
+        apply_file_labels(&mut node.children, labels);
+    }
+}
+
 /// 展开到指定路径的节点（沿途展开所有祖先），返回是否找到
 pub fn reveal(nodes: &mut [TreeNode], target: &str) -> bool {
     for node in nodes {

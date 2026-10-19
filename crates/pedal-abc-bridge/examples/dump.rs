@@ -86,8 +86,18 @@ fn dump_abc(label: &str, data: Vec<u8>, sample: usize, full_disasm: bool) {
         println!("    unknown x{n}: {e}");
     }
     // 定点反汇编调试：ARK_DISASM_AT=<method_off>
-    if let Ok(at) = std::env::var("ARK_DISASM_AT")
-        && let Ok(off) = u32::from_str_radix(at.trim_start_matches("0x"), 16)
+    let selected_offset = std::env::var("ARK_DISASM_AT")
+        .ok()
+        .and_then(|at| u32::from_str_radix(at.trim_start_matches("0x"), 16).ok())
+        .or_else(|| {
+            let name = std::env::var("ARK_DISASM_METHOD").ok()?;
+            file.classes
+                .iter()
+                .flat_map(|c| &c.methods)
+                .find(|m| m.name == name)
+                .map(|m| m.offset)
+        });
+    if let Some(off) = selected_offset
         && let Ok(m) = file.method_at(off)
         && let Some(code) = &m.code
     {
