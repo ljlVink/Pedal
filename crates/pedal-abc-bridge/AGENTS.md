@@ -15,11 +15,15 @@ artifacts. No UI dependencies; every public operation returns
 | `disasm` | Instruction decoder (prefix byte `0xfb..0xfe`, bit-packed operands) and pandasm-style text renderer with resolved strings and labels |
 | `decompile` | Pseudo-ArkTS pipeline: `cfg` (basic blocks, try coverage) → `lift` (accumulator/register expression lifting, side-effect flush, this-call fusion) → `structure` (single-use register folding, compare-chain switch recovery inspired by *A Jump-Table-Agnostic Switch Recovery on ASTs*) → `printer` (functions, class/object literals, import/export headers) |
 | `hap` | HAP/HSP/HAR package reader (zip central directory, per-entry lazy reads, abc/an/so/descriptor classification) |
+| `resource` | Pure-Rust Restool/RestoolV2 resource index reader: IDs, names, values and qualifiers with bounded reads |
 
 ## Supported inputs
 
 - `.hap` / `.hsp` / `.har` / `.app` packages: every embedded `.abc` is parsed;
   other entries (`.so`, `.an`, `module.json`, resources) are exposed as raw bytes.
+  `resource::ResourceIndex::parse` reads compiled `resources.index` data in both
+  Restool and RestoolV2 formats. Resource corpus checks are selected with
+  `cargo test -p pedal-abc-bridge --test corpus resources -- --ignored`.
 - Standalone `.abc` files, both bytecode layouts:
   - **Modern** (`9.0.0.0` … `13.x`, e.g. every app `ets/modules.abc`): full
     container + 100% instruction decode on the test corpus.

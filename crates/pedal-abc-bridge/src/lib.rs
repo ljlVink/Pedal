@@ -12,6 +12,7 @@ pub mod hap;
 pub mod isa;
 mod isa_gen;
 pub mod reader;
+pub mod resource;
 
 #[cfg(test)]
 #[path = "../tests/common/mod.rs"]

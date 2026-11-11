@@ -13,6 +13,8 @@ rust_i18n::i18n!("locales", fallback = "en");
 mod app;
 mod appearance;
 mod cli;
+mod formatting;
+mod resources;
 mod settings;
 mod task;
 mod ui;

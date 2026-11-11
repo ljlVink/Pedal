@@ -10,7 +10,7 @@ use crate::appearance::{codicon, theme};
 use eframe::egui;
 use egui_keybind::KeyBind;
 use egui_shell::components::{
-    SectionDef, SettingsFile, SettingsPanel, SettingsTheme, section_header,
+    SectionDef, SettingsFile, SettingsPanel, SettingsTheme, section_header, toggle,
 };
 use egui_shell::keybind_rows;
 use rust_i18n::t;
@@ -140,6 +140,20 @@ impl Default for KeymapSettings {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EditorSettings {
+    pub auto_format_json: bool,
+}
+
+impl Default for EditorSettings {
+    fn default() -> Self {
+        Self {
+            auto_format_json: true,
+        }
+    }
+}
+
 impl SettingsFile for Settings {
     fn app_name() -> &'static str {
         "pedal"
@@ -159,6 +173,7 @@ tabookit::class! {
         pub open_behavior: OpenBehavior,
         /// 快捷键设置
         pub keymap: KeymapSettings,
+        pub editor: EditorSettings,
         /// 最近打开列表
         pub recent: Vec<RecentEntry>,
     }
@@ -323,6 +338,13 @@ fn render_general(draft: &mut Settings, ui: &mut egui::Ui, st: &SettingsTheme) -
             });
     });
     ui.add_space(4.0);
+    section_header(ui, st, &t!("settings.section_editor"));
+    changed |= toggle(
+        ui,
+        st,
+        &t!("settings.auto_format_json"),
+        &mut draft.editor.auto_format_json,
+    );
     changed
 }
 
@@ -352,4 +374,31 @@ fn render_keymap(km: &mut KeymapSettings, ui: &mut egui::Ui, st: &SettingsTheme)
         t!("settings.export_decompiled") => export_decompiled,
     );
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_format_defaults_work_with_existing_settings() {
+        for source in ["", "language = 'en'", "[editor]"] {
+            let settings: Settings = toml::from_str(source).unwrap();
+            assert!(settings.editor.auto_format_json);
+        }
+        assert!(Settings::default().editor.auto_format_json);
+    }
+
+    #[test]
+    fn auto_format_disabled_setting_survives_roundtrip() {
+        let settings: Settings = toml::from_str(
+            "language = 'en'\nopen_behavior = 'current_window'\n[editor]\nauto_format_json = false",
+        )
+        .unwrap();
+        let saved = toml::to_string(&settings).unwrap();
+        let restored: Settings = toml::from_str(&saved).unwrap();
+        assert!(!restored.editor.auto_format_json);
+        assert_eq!(restored.language, Language::En);
+        assert_eq!(restored.open_behavior, OpenBehavior::CurrentWindow);
+    }
 }

@@ -74,13 +74,54 @@ impl TabViewer for EditorTabViewer<'_> {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        tab.poll_auto_format(ui.ctx());
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+        if tab.format_task.is_some() && tab.active_view == ActiveView::Decompiled {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(t!("editor.formatting"));
+            });
+            return;
+        }
+        if let Some(tree) = &mut tab.resource_tree {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+                ui.selectable_value(
+                    &mut tab.active_view,
+                    ActiveView::Resources,
+                    t!("resource_tree.view"),
+                );
+                ui.selectable_value(&mut tab.active_view, ActiveView::Hex, t!("status.hex"));
+            });
+            ui.separator();
+            if tab.active_view == ActiveView::Resources {
+                tree.show(ui);
+                return;
+            }
+        }
+        if let Some(preview) = &mut tab.image_preview {
+            preview.poll(ui.ctx());
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+                ui.selectable_value(
+                    &mut tab.active_view,
+                    ActiveView::Image,
+                    t!("editor.view_image"),
+                );
+                ui.selectable_value(&mut tab.active_view, ActiveView::Hex, t!("status.hex"));
+                if tab.active_view == ActiveView::Image {
+                    preview.controls(ui);
+                }
+            });
+            ui.separator();
+        }
         // 更新搜索（先于内容渲染，提供高亮数据）
         if self.find_bar.open {
             match tab.active_view {
                 ActiveView::Hex => self.find_bar.update_bytes(&tab.raw_bytes),
                 ActiveView::Decompiled => self.find_bar.update_text(&tab.decompiled),
                 ActiveView::Disasm => self.find_bar.update_text(&tab.disasm_text),
+                ActiveView::Image | ActiveView::Resources => {}
             }
         }
         let (matches, current) = if self.find_bar.open {
@@ -111,6 +152,7 @@ impl TabViewer for EditorTabViewer<'_> {
                         .count();
                     tab.pending_scroll_to_line = Some(line);
                 }
+                ActiveView::Image | ActiveView::Resources => {}
             }
         }
         // ArkTS tab：反汇编视图懒生成
@@ -121,8 +163,14 @@ impl TabViewer for EditorTabViewer<'_> {
             self.action = Some(TabAction::LoadDisasm(path));
         }
         // 代码内容独立滚动。
+        if tab.active_view == ActiveView::Image {
+            if let Some(preview) = &mut tab.image_preview {
+                preview.show(ui);
+            }
+            return;
+        }
         egui::ScrollArea::both()
-            .id_salt("editor_content")
+            .id_salt(("editor_content", tab.active_view))
             .auto_shrink([false, false])
             .show(ui, |ui| match tab.active_view {
                 ActiveView::Decompiled if tab.is_text => {
@@ -133,6 +181,7 @@ impl TabViewer for EditorTabViewer<'_> {
                 }
                 ActiveView::Hex => render::render_hex(ui, tab, &matches, current),
                 ActiveView::Disasm => render::render_disasm(ui, tab, &matches, current),
+                ActiveView::Image | ActiveView::Resources => {}
             });
         // 浮动查找栏（overlay，用 clip_rect 定位到可见区域，不随 ScrollArea 滚动）
         if self.find_bar.open {

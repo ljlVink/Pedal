@@ -6,14 +6,12 @@
 
 **ArkTS decompiler**
 
-Ark bytecode abc/pandasm disassembly powered by a pure-Rust engine
+Ark bytecode abc/pandasm disassembly powered by a pure-Rust engine [中文](README_CN.md)
 
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-f74c00?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![egui](https://img.shields.io/badge/egui-0.34-1ba7f5)](https://github.com/emilk/egui)
 [![Platform](https://img.shields.io/badge/Platform-Windows_·_macOS_·_Linux-8957e5)](#build)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)</br>
-
-[Features](#arkts-decompilation) · [Build](#build) · [中文](README_CN.md)
 
 </div>
 

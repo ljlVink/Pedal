@@ -51,6 +51,10 @@ pub enum AbcError {
     Zip(String),
     /// IO 失败
     Io(String),
+    ResourceIndex {
+        offset: usize,
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for AbcError {
@@ -82,6 +86,9 @@ impl fmt::Display for AbcError {
             }
             AbcError::Zip(e) => write!(f, "zip error: {e}"),
             AbcError::Io(e) => write!(f, "io error: {e}"),
+            AbcError::ResourceIndex { offset, reason } => {
+                write!(f, "invalid resource index at {offset:#x}: {reason}")
+            }
         }
     }
 }

@@ -33,6 +33,7 @@ pub struct HapArchive {
 impl HapArchive {
     /// 判断文件名是否为支持的包
     pub fn is_package(path: &str) -> bool {
+        let path = path.to_ascii_lowercase();
         path.ends_with(".hap")
             || path.ends_with(".hsp")
             || path.ends_with(".har")
@@ -90,5 +91,24 @@ impl HapArchive {
                     .find(|e| e.is_abc)
                     .map(|e| e.path.as_str())
             })
+    }
+
+    pub fn read_entry_limited(&self, path: &str, limit: usize) -> AbcResult<Vec<u8>> {
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&self.data))
+            .map_err(|e| AbcError::Zip(e.to_string()))?;
+        let entry = zip
+            .by_name(path)
+            .map_err(|e| AbcError::Zip(e.to_string()))?;
+        if entry.size() > limit as u64 {
+            return Err(AbcError::Zip(format!("entry {path} exceeds {limit} bytes")));
+        }
+        let mut out = Vec::new();
+        entry
+            .take((limit as u64).saturating_add(1))
+            .read_to_end(&mut out)?;
+        if out.len() > limit {
+            return Err(AbcError::Zip(format!("entry {path} exceeds {limit} bytes")));
+        }
+        Ok(out)
     }
 }

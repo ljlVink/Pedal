@@ -1,0 +1,159 @@
+{
+  "bundleName": "com.pedal.resources",
+  "moduleName": "entry",
+  "resource": [
+    {
+      "id": 16777216,
+      "name": "answer",
+      "type": "integer",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": "42"
+        }
+      ]
+    },
+    {
+      "id": 16777217,
+      "name": "empty",
+      "type": "string",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": ""
+        }
+      ]
+    },
+    {
+      "id": 16777218,
+      "name": "greeting",
+      "type": "string",
+      "entryCount": 2,
+      "entryValues": [
+        {
+          "value": "Hello \"Ark\"\n世界"
+        },
+        {
+          "value": "你好，世界",
+          "language": "zh",
+          "script": "Hans",
+          "region": "CN"
+        }
+      ]
+    },
+    {
+      "id": 16777219,
+      "name": "reference",
+      "type": "string",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": "$string:16777218"
+        }
+      ]
+    },
+    {
+      "id": 16777220,
+      "name": "labels",
+      "type": "strarray",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": [
+            "Alpha",
+            "中文",
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "id": 16777221,
+      "name": "numbers",
+      "type": "intarray",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": [
+            "1",
+            "-2",
+            "3"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 16777222,
+      "name": "enabled",
+      "type": "boolean",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "id": 16777223,
+      "name": "background",
+      "type": "color",
+      "entryCount": 2,
+      "entryValues": [
+        {
+          "value": "#FFFFFF"
+        },
+        {
+          "value": "#000000",
+          "colorMode": "dark"
+        }
+      ]
+    },
+    {
+      "id": 16777224,
+      "name": "items",
+      "type": "plural",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": {
+            "one": "one item",
+            "other": "%d items"
+          }
+        }
+      ]
+    },
+    {
+      "id": 16777225,
+      "name": "spacing",
+      "type": "float",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": "12.5vp"
+        }
+      ]
+    },
+    {
+      "id": 16777226,
+      "name": "icon",
+      "type": "media",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": "entry/resources/base/media/icon.svg"
+        }
+      ]
+    },
+    {
+      "id": 16777227,
+      "name": "pages",
+      "type": "profile",
+      "entryCount": 1,
+      "entryValues": [
+        {
+          "value": "entry/resources/base/profile/pages.json"
+        }
+      ]
+    }
+  ]
+}

@@ -158,7 +158,7 @@ tabookit::class! {
             ActiveView::Decompiled => {
                 Some(line_number_width(tab.decompiled_data.line_count()))
             }
-            ActiveView::Disasm | ActiveView::Hex => None,
+            ActiveView::Disasm | ActiveView::Hex | ActiveView::Image | ActiveView::Resources => None,
         }
     }
 
@@ -228,7 +228,13 @@ tabookit::class! {
 
     pub fn set_focused_view(&mut self, view: ActiveView) {
         if let Some(tab) = self.focused_tab() {
-            tab.active_view = view;
+            tab.active_view = if tab.is_image() && view == ActiveView::Decompiled {
+                ActiveView::Image
+            } else if tab.is_resource() && view == ActiveView::Decompiled {
+                ActiveView::Resources
+            } else {
+                view
+            };
         }
     }
 
@@ -243,10 +249,15 @@ tabookit::class! {
 
     /// 循环切换聚焦 tab 的视图（仅 ArkTS record 的源码/反汇编双视图）
     pub fn cycle_view(&mut self) {
-        if let Some(tab) = self.focused_tab()
-            && tab.is_ark {
+        if let Some(tab) = self.focused_tab() {
+            if tab.is_ark {
                 tab.active_view = tab.active_view.next_ark();
+            } else if tab.image_preview.is_some() {
+                tab.active_view = if tab.active_view == ActiveView::Image { ActiveView::Hex } else { ActiveView::Image };
+            } else if tab.resource_tree.is_some() {
+                tab.active_view = if tab.active_view == ActiveView::Resources { ActiveView::Hex } else { ActiveView::Resources };
             }
+        }
     }
 
     /// 填充 ArkTS tab 的反汇编文本（懒生成完成后调用）
@@ -263,6 +274,16 @@ tabookit::class! {
 
     /// 打开/聚焦编辑器内查找栏
     pub fn open_find(&mut self) {
+        if let Some(tab) = self.focused_tab()
+            && tab.active_view == ActiveView::Resources
+            && let Some(tree) = &mut tab.resource_tree {
+                tree.request_search_focus();
+                return;
+            }
+        if let Some(tab) = self.focused_tab()
+            && tab.active_view == ActiveView::Image {
+                tab.active_view = ActiveView::Hex;
+            }
         self.find_bar.toggle();
     }
 

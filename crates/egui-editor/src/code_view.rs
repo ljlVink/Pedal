@@ -217,6 +217,13 @@ fn code_view_structured(
         };
     }
     if is_viewport {
+        if !editable {
+            viewport::code_view_readonly_viewport(ui, text, config, cache, scroll_to_line);
+            return CodeViewOutput {
+                value: false,
+                response: None,
+            };
+        }
         let changed = viewport::code_view_editable_viewport(
             ui,
             text,

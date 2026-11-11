@@ -17,6 +17,10 @@ use eframe::egui;
 use std::ops::Range;
 use std::sync::Arc;
 
+mod readonly;
+
+pub(crate) use readonly::code_view_readonly_viewport;
+
 /// 视窗模式触发阈值（字节）
 pub const VIEWPORT_TEXT_LEN: usize = 100_000;
 /// 视窗半径（字符数）
@@ -189,6 +193,20 @@ pub(crate) fn code_view_editable_viewport(
 
     // 视窗模式禁用 undo：每帧清空 undoer
     if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+        if let Some(previous) = prev_window_start
+            && previous != win_start_char
+        {
+            let remapped = state.cursor.char_range().map(|mut range| {
+                range.primary.index = (range.primary.index + previous)
+                    .saturating_sub(win_start_char)
+                    .min(win_end_char - win_start_char);
+                range.secondary.index = (range.secondary.index + previous)
+                    .saturating_sub(win_start_char)
+                    .min(win_end_char - win_start_char);
+                range
+            });
+            state.cursor.set_char_range(remapped);
+        }
         state.clear_undoer();
         state.store(ui.ctx(), id);
     }
@@ -294,7 +312,9 @@ pub(crate) fn code_view_editable_viewport(
             out_galley = Some(output.galley.clone());
             out_galley_pos = output.galley_pos;
             changed = output.response.changed();
-            if let Some(cr) = output.cursor_range {
+            if output.response.has_focus()
+                && let Some(cr) = output.cursor_range
+            {
                 new_cursor_char = cr.primary.index + win_start_char;
                 selection_secondary_global = cr.secondary.index + win_start_char;
             }
@@ -319,7 +339,9 @@ pub(crate) fn code_view_editable_viewport(
             galley_y = output.galley_pos.y;
             out_galley = Some(output.galley.clone());
             out_galley_pos = output.galley_pos;
-            if let Some(cr) = output.cursor_range {
+            if output.response.has_focus()
+                && let Some(cr) = output.cursor_range
+            {
                 new_cursor_char = cr.primary.index + win_start_char;
                 selection_secondary_global = cr.secondary.index + win_start_char;
             }

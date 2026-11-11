@@ -14,7 +14,12 @@ use rust_i18n::t;
 pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let mt = &theme::menu_theme();
     let state = MenuState::from_app(app);
-    if menu_item_if(ui, mt, &t!("editor.view_source"), None, state.has_tab) {
+    let source_label = match app.layout.editor.focused_tab() {
+        Some(tab) if tab.is_image() => t!("editor.view_image"),
+        Some(tab) if tab.is_resource() => t!("resource_tree.view"),
+        _ => t!("editor.view_source"),
+    };
+    if menu_item_if(ui, mt, &source_label, None, state.has_tab) {
         ui.close();
         app.layout.editor.set_focused_view(ActiveView::Decompiled);
     }

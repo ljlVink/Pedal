@@ -17,6 +17,8 @@ fn view_label(v: ActiveView) -> String {
         ActiveView::Decompiled => t!("editor.view_source").to_string(),
         ActiveView::Hex => t!("status.hex").to_string(),
         ActiveView::Disasm => t!("editor.view_disasm").to_string(),
+        ActiveView::Image => t!("editor.view_image").to_string(),
+        ActiveView::Resources => t!("resource_tree.view").to_string(),
     }
 }
 

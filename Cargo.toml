@@ -31,7 +31,7 @@ sha2 = "0.11"
 indexmap = "2"
 regex = "1"
 rust-i18n = "3"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 
 [build-dependencies]
 winresource = "0.1"

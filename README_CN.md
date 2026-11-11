@@ -6,14 +6,12 @@
 
 **ArkTS 反编译器**
 
-纯 Rust 引擎的方舟字节码 abc/pandasm 反汇编
+纯 Rust 引擎的方舟字节码 abc/pandasm 反汇编 [English](README.md)
  
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-f74c00?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![egui](https://img.shields.io/badge/egui-0.34-1ba7f5)](https://github.com/emilk/egui)
 [![Platform](https://img.shields.io/badge/Platform-Windows_·_macOS_·_Linux-8957e5)](#构建)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)</br>
-
-[特性](#特性) · [构建](#构建) · [English](README.md)
 
 </div>
 

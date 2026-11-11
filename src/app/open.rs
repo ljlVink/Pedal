@@ -7,7 +7,7 @@ use super::App;
 use super::ark::{self, ArkLoadingState};
 use super::workspace::{LoadedState, LoadingState, Workspace};
 use crate::task::{Poll, Pollable, Task};
-use crate::ui::editor::EditorArea;
+use crate::ui::editor::{EditorArea, EditorTab};
 use crate::ui::explorer::tree;
 use eframe::egui;
 use egui_shell::components::SettingsFile;
@@ -34,7 +34,46 @@ impl App {
             return;
         };
         let bytes = raw.to_vec();
-        let mut tab = Self::create_tab(&entry_path, &bytes);
+        let resource_tree = self
+            .workspace
+            .loaded()
+            .and_then(|loaded| loaded.ark.as_ref())
+            .and_then(|ark| ark.resource_trees.get(&entry_path));
+        let resource_source = self
+            .workspace
+            .loaded()
+            .and_then(|loaded| loaded.ark.as_ref())
+            .filter(|ark| !ark.disasm_targets.contains_key(&entry_path))
+            .and_then(|ark| {
+                let path = ark
+                    .resource_previews
+                    .get(&entry_path)
+                    .unwrap_or(&entry_path);
+                ark.sources.get(path).map(|source| (source, path))
+            });
+        let mut tab = if let Some(data) = resource_tree {
+            let name = entry_path.rsplit('/').next().unwrap_or(&entry_path);
+            EditorTab::new_resources(name, &entry_path, bytes, Arc::clone(data))
+        } else if let Some((source, source_path)) = resource_source {
+            let name = entry_path.rsplit('/').next().unwrap_or(&entry_path);
+            EditorTab::new_text_file(
+                name,
+                &entry_path,
+                source.clone(),
+                bytes,
+                egui_editor::highlight::Language::from_filename(source_path),
+                self.settings.editor.auto_format_json,
+            )
+        } else {
+            Self::create_tab(&entry_path, &bytes, self.settings.editor.auto_format_json)
+        };
+        if self
+            .workspace
+            .loaded()
+            .is_some_and(|loaded| loaded.ark.is_some())
+        {
+            tab.is_text = false;
+        }
         if let Some(ark) = self
             .workspace
             .loaded()
@@ -210,7 +249,7 @@ impl App {
     pub(crate) fn pick_file() -> Option<(std::path::PathBuf, bool)> {
         let ark_label = t!("layout.ark_archive");
         rfd::FileDialog::new()
-            .add_filter(&*ark_label, &["hap", "hsp", "abc", "har", "app"])
+            .add_filter(&*ark_label, &["hap", "hsp", "abc", "har", "app", "index"])
             .pick_file()
             .map(|path| {
                 let is_archive = is_jar_file(&path) || ark::is_ark_file(&path);
@@ -262,7 +301,7 @@ impl App {
                 return;
             }
         };
-        let mut tab = Self::create_tab(&path_str, &bytes);
+        let mut tab = Self::create_tab(&path_str, &bytes, self.settings.editor.auto_format_json);
         tab.standalone_path = Some(path.to_path_buf());
         self.layout.editor.open_tab(tab);
     }
@@ -294,6 +333,128 @@ mod tests {
             workspace: Workspace::Loaded(Box::new(loaded)),
             exporting: None,
         }
+    }
+
+    #[test]
+    fn resources_open_as_readonly_tree_with_json_export_and_search() {
+        use std::io::Write;
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("crates/pedal-abc-bridge/tests/fixtures/resources/v2.index");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("resources.HAP");
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        for (name, data) in [
+            ("resources.index", std::fs::read(fixture).unwrap()),
+            ("resources.index.json", b"original content".to_vec()),
+            ("resources/rawfile/data.json", br#"{"raw":true}"#.to_vec()),
+            ("other/resources.index", b"invalid".to_vec()),
+        ] {
+            archive
+                .start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(&data).unwrap();
+        }
+        archive.finish().unwrap();
+        let (jar, meta) = ark::open_ark(&path, &LoadProgress::new()).unwrap();
+        assert_eq!(
+            jar.get("resources.index.json").unwrap(),
+            b"original content"
+        );
+        assert!(jar.get("other/resources.index.error.txt").is_some());
+        let generated = "resources.index.1.json";
+        assert!(meta.sources[generated].contains("greeting"));
+        let mut loaded = LoadedState::new(jar);
+        loaded.ark = Some(meta);
+        let mut app = app_with_workspace(loaded);
+        app.layout.file_panel.pending_open = Some("resources.index".into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert_eq!(tab.title, "resources.index");
+        assert!(tab.is_resource());
+        assert!(tab.active_view == ActiveView::Resources);
+        assert!(!tab.is_text && !tab.is_ark);
+        assert!(tab.raw_bytes.starts_with(b"RestoolV2 "));
+        assert!(tab.decompiled.is_empty());
+        assert!(tab.editable_layout_cache.is_none());
+        app.layout.editor.set_focused_view(ActiveView::Hex);
+        assert!(app.layout.editor.focused_tab().unwrap().active_view == ActiveView::Hex);
+        app.layout.editor.set_focused_view(ActiveView::Decompiled);
+        assert!(app.layout.editor.focused_tab().unwrap().active_view == ActiveView::Resources);
+        app.layout.editor.cycle_view();
+        assert!(app.layout.editor.focused_tab().unwrap().active_view == ActiveView::Hex);
+        app.layout.editor.cycle_view();
+        assert!(app.layout.editor.focused_tab().unwrap().active_view == ActiveView::Resources);
+        app.layout.editor.open_find();
+        assert!(!app.layout.editor.find_bar.open);
+        app.layout.file_panel.pending_open = Some("other/resources.index".into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert!(!tab.is_resource());
+        assert!(!tab.decompiled.is_empty());
+        assert_eq!(tab.raw_bytes, b"invalid");
+        app.layout.file_panel.pending_open = Some(generated.into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert!(!tab.is_text && !tab.is_ark);
+        assert!(tab.language == egui_editor::highlight::Language::Json);
+        assert!(tab.active_view == ActiveView::Decompiled);
+        assert!(tab.decompiled.contains("你好"));
+        app.rebuild_search_index();
+        assert!(
+            app.workspace
+                .loaded()
+                .unwrap()
+                .search_index
+                .as_ref()
+                .unwrap()
+                .entries
+                .iter()
+                .any(|entry| entry.entry_path == generated && entry.source.contains("greeting"))
+        );
+        app.layout.file_panel.pending_open = Some("resources/rawfile/data.json".into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert!(!tab.is_text);
+        assert_eq!(tab.decompiled, r#"{"raw":true}"#);
+        let large = serde_json::to_string_pretty(&serde_json::json!({
+            "resource": vec!["长资源文本"; 40_000]
+        }))
+        .unwrap();
+        assert!(large.len() > 512 * 1024);
+        let loaded = app.workspace.loaded_mut().unwrap();
+        loaded
+            .jar
+            .put("large.index.json", large.as_bytes().to_vec());
+        loaded
+            .ark
+            .as_mut()
+            .unwrap()
+            .sources
+            .insert("large.index.json".into(), large.clone());
+        app.layout.file_panel.pending_open = Some("large.index.json".into());
+        app.handle_pending_open();
+        assert_eq!(app.layout.editor.focused_tab().unwrap().decompiled, large);
+    }
+
+    #[test]
+    fn standalone_resource_index_opens_cached_tree_without_text_layout() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("crates/pedal-abc-bridge/tests/fixtures/resources/v2.index");
+        let (jar, meta) = ark::open_ark(&path, &LoadProgress::new()).unwrap();
+        assert!(meta.resource_trees.contains_key("v2.index"));
+        assert!(meta.sources["v2.index.json"].contains("greeting"));
+        let mut loaded = LoadedState::new(jar);
+        loaded.ark = Some(meta);
+        let mut app = app_with_workspace(loaded);
+        app.layout.file_panel.pending_open = Some("v2.index".into());
+        app.handle_pending_open();
+        let tab = app.layout.editor.focused_tab().unwrap();
+        assert!(tab.is_resource());
+        assert!(tab.active_view == ActiveView::Resources);
+        assert!(tab.decompiled.is_empty());
+        assert!(tab.layout_cache.is_none());
+        assert!(tab.editable_layout_cache.is_none());
+        assert_eq!(tab.serialize_bytes().unwrap(), std::fs::read(path).unwrap());
     }
 
     #[test]

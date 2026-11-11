@@ -4,6 +4,7 @@
 
 mod analyze;
 mod console;
+mod restool;
 
 use clap::{Parser, Subcommand};
 use rust_i18n::t;
@@ -34,6 +35,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
+    #[command(
+        about = "Inspect compiled HarmonyOS resources",
+        arg_required_else_help = true
+    )]
+    Restool {
+        #[command(subcommand)]
+        command: ResourceAction,
+    },
     #[command(about = "Export all records")]
     Analyze {
         #[arg(value_name = "INPUT", help = "ABC file or package to analyze")]
@@ -48,10 +57,31 @@ enum Action {
     },
 }
 
+#[derive(Subcommand)]
+enum ResourceAction {
+    #[command(
+        about = "Print resources as JSON",
+        after_help = "Examples:\n  pedal restool dump entry.hap\n  pedal restool dump config entry.hap\n  pedal restool dump resources.index"
+    )]
+    Dump {
+        #[arg(
+            value_name = "INPUT_OR_CONFIG",
+            help = "HAP/HSP package, resources.index, or config"
+        )]
+        input: PathBuf,
+        #[arg(
+            value_name = "INPUT",
+            help = "Input path when the first argument is config"
+        )]
+        config_input: Option<PathBuf>,
+    },
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Command {
     Gui(Option<PathBuf>),
     Analyze { input: PathBuf, output: PathBuf },
+    ResourceDump { input: PathBuf, config_only: bool },
 }
 
 /// 使用 OsString 保留非 Unicode 文件路径；旧 GUI 调用仍使用首个位置参数。
@@ -63,6 +93,31 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
     let cli = Cli::try_parse_from(std::iter::once(OsString::from("pedal")).chain(args))?;
     Ok(match cli.command {
         Some(Action::Analyze { input, output }) => Command::Analyze { input, output },
+        Some(Action::Restool {
+            command:
+                ResourceAction::Dump {
+                    input,
+                    config_input,
+                },
+        }) => {
+            if let Some(config_input) = config_input {
+                if input != std::path::Path::new("config") {
+                    return Err(clap::Error::raw(
+                        clap::error::ErrorKind::InvalidValue,
+                        "two dump arguments require 'config' before the input path",
+                    ));
+                }
+                Command::ResourceDump {
+                    input: config_input,
+                    config_only: true,
+                }
+            } else {
+                Command::ResourceDump {
+                    input,
+                    config_only: false,
+                }
+            }
+        }
         None => Command::Gui(cli.files.into_iter().next().map(PathBuf::from)),
     })
 }
@@ -71,6 +126,14 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
 pub(crate) fn run(command: Result<Command, clap::Error>) -> i32 {
     console::attach();
     let code = match command {
+        Ok(Command::ResourceDump { input, config_only }) => match restool::run(&input, config_only)
+        {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("{}", t!("cli.error", error = error));
+                1
+            }
+        },
         Ok(Command::Analyze { input, output }) => match analyze::run(&input, &output) {
             Ok(report) => {
                 println!(
@@ -112,6 +175,42 @@ mod tests {
 
     fn parse_strings(args: &[&str]) -> Result<Command, clap::Error> {
         parse(args.iter().map(OsString::from))
+    }
+
+    #[test]
+    fn parses_restool_dump_and_config() {
+        assert_eq!(
+            parse_strings(&["restool", "dump", "中文.hap"]).unwrap(),
+            Command::ResourceDump {
+                input: "中文.hap".into(),
+                config_only: false
+            }
+        );
+        assert_eq!(
+            parse_strings(&["restool", "dump", "config", "resources.index"]).unwrap(),
+            Command::ResourceDump {
+                input: "resources.index".into(),
+                config_only: true
+            }
+        );
+        assert!(parse_strings(&["restool", "dump", "wrong", "entry.hap"]).is_err());
+        assert!(parse_strings(&["restool", "dump"]).is_err());
+        assert_eq!(
+            parse_strings(&["restool", "--help"])
+                .unwrap_err()
+                .exit_code(),
+            0
+        );
+        assert_eq!(
+            parse_strings(&["restool", "dump", "--help"])
+                .unwrap_err()
+                .exit_code(),
+            0
+        );
+        assert_eq!(
+            parse_strings(&["--", "restool"]).unwrap(),
+            Command::Gui(Some("restool".into()))
+        );
     }
 
     #[test]

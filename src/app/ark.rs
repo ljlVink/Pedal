@@ -7,11 +7,13 @@
 //! @author ljlVink
 
 use crate::task::{Poll, Pollable, Task};
+use crate::ui::editor::ResourceTreeData;
 use pedal_abc_bridge::decompile;
 use pedal_abc_bridge::disasm::{self, DisasmCtx};
 use pedal_abc_bridge::error::AbcError;
 use pedal_abc_bridge::file::AbcFile;
 use pedal_abc_bridge::hap::HapArchive;
+use pedal_abc_bridge::resource::{MAX_INDEX_SIZE, ResourceIndex};
 use pedal_archive::jar::{JarArchive, LoadProgress};
 use rust_i18n::t;
 use std::collections::HashMap;
@@ -36,6 +38,8 @@ pub(crate) struct ArkMeta {
     pub disasm_targets: HashMap<String, (usize, u32)>,
     /// 需要与可导出路径区分的可读文件名（联合类型等）。
     pub record_labels: HashMap<String, String>,
+    pub resource_previews: HashMap<String, String>,
+    pub resource_trees: HashMap<String, Arc<ResourceTreeData>>,
     /// 当前工作区的反汇编后台任务；关闭工作区时丢弃接收端。
     disasm_tasks: HashMap<String, Task<Option<String>>>,
 }
@@ -107,6 +111,7 @@ pub(crate) fn is_ark_file(path: &Path) -> bool {
         || lower.ends_with(".abc")
         || lower.ends_with(".har")
         || lower.ends_with(".app")
+        || lower.ends_with(".index")
 }
 
 /// 后台打开 ArkTS 文件（HAP/HSP/独立 abc）
@@ -139,14 +144,27 @@ pub(super) fn open_ark(
 
     let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
     let mut abcs: Vec<(String, Arc<AbcFile>)> = Vec::new();
+    let mut sources = HashMap::new();
+    let mut resource_previews = HashMap::new();
+    let mut resource_trees = HashMap::new();
 
     let is_package = HapArchive::is_package(&path.to_string_lossy());
     if is_package {
         let hap = HapArchive::parse(data)?;
         // 原始条目（限制大小）
         for e in &hap.entries {
-            if e.size <= RAW_ENTRY_LIMIT {
-                if let Ok(bytes) = hap.read_entry(&e.path) {
+            if e.path.ends_with('/') {
+                continue;
+            }
+            let limit = if e.path.rsplit('/').next() == Some("resources.index")
+                || e.path.to_ascii_lowercase().ends_with(".png")
+            {
+                MAX_INDEX_SIZE
+            } else {
+                RAW_ENTRY_LIMIT as usize
+            };
+            if e.size <= limit as u64 {
+                if let Ok(bytes) = hap.read_entry_limited(&e.path, limit) {
                     entries.insert(e.path.clone(), bytes);
                 }
             } else {
@@ -156,6 +174,41 @@ pub(super) fn open_ark(
                     format!("<large entry {} bytes>", e.size).into_bytes(),
                 );
             }
+        }
+        for e in hap.entries.iter().filter(|e| {
+            e.path
+                .rsplit('/')
+                .next()
+                .is_some_and(|name| name == "resources.index")
+        }) {
+            let parsed = crate::resources::read_package_index(&hap, &e.path).and_then(
+                |(index, descriptor)| {
+                    let text = crate::resources::pretty(&crate::resources::dump(
+                        &index,
+                        descriptor.as_deref(),
+                        false,
+                    ))?;
+                    resource_trees.insert(e.path.clone(), Arc::new(ResourceTreeData::new(index)));
+                    Ok(text)
+                },
+            );
+            let (suffix, text) = match parsed {
+                Ok(text) => ("json", text),
+                Err(error) => (
+                    "error.txt",
+                    t!("resources.parse_failed", path = &e.path, error = error).into_owned(),
+                ),
+            };
+            let stem = crate::resources::output_stem(&e.path);
+            let mut output = format!("{stem}.{suffix}");
+            let mut collision = 1;
+            while entries.contains_key(&output) || hap.entries.iter().any(|e| e.path == output) {
+                output = format!("{stem}.{collision}.{suffix}");
+                collision += 1;
+            }
+            entries.insert(output.clone(), text.as_bytes().to_vec());
+            resource_previews.insert(e.path.clone(), output.clone());
+            sources.insert(output, text);
         }
         // abc 条目
         for e in hap.entries.iter().filter(|e| e.is_abc) {
@@ -171,6 +224,18 @@ pub(super) fn open_ark(
                 }
             }
         }
+    } else if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("index"))
+    {
+        let index = ResourceIndex::parse(&data)?;
+        let text = crate::resources::pretty(&crate::resources::dump(&index, None, false))?;
+        resource_trees.insert(name.clone(), Arc::new(ResourceTreeData::new(index)));
+        entries.insert(name.clone(), data);
+        let output = format!("{name}.json");
+        entries.insert(output.clone(), text.as_bytes().to_vec());
+        resource_previews.insert(name.clone(), output.clone());
+        sources.insert(output, text);
     } else {
         let f = AbcFile::parse(data)?;
         let stem = path
@@ -229,7 +294,6 @@ pub(super) fn open_ark(
                 .collect()
         })
     };
-    let mut sources = HashMap::new();
     let mut record_labels = HashMap::new();
     let mut disasm_targets: HashMap<String, (usize, u32)> = HashMap::new();
     for part in results {
@@ -266,6 +330,8 @@ pub(super) fn open_ark(
             disasm: HashMap::new(),
             disasm_targets,
             record_labels,
+            resource_previews,
+            resource_trees,
             disasm_tasks: HashMap::new(),
         },
     ))

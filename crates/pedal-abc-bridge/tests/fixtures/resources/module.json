@@ -1,0 +1,16 @@
+{
+  "app": {
+    "bundleName": "com.pedal.resources",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "minAPIVersion": 20,
+    "targetAPIVersion": 20
+  },
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "deviceTypes": [
+      "phone"
+    ]
+  }
+}

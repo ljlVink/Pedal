@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 mod containers;
 mod download;
 mod prototypes;
+mod resources;
 
 fn corpus_path(relative_path: &str) -> PathBuf {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -64,16 +64,22 @@ impl App {
     }
 
     /// 从条目路径和字节创建编辑器 tab
-    pub(super) fn create_tab(entry_path: &str, bytes: &[u8]) -> EditorTab {
+    pub(super) fn create_tab(entry_path: &str, bytes: &[u8], auto_format_json: bool) -> EditorTab {
         let file_name = entry_path.rsplit('/').next().unwrap_or(entry_path);
-        if Self::is_binary(bytes) {
+        if image::guess_format(bytes).is_ok_and(|format| {
+            matches!(format, image::ImageFormat::Png | image::ImageFormat::WebP)
+        }) {
+            EditorTab::new_image(file_name, entry_path, bytes.to_vec())
+        } else if Self::is_binary(bytes) {
             EditorTab::new_binary(file_name, entry_path, bytes.to_vec())
         } else {
             let mut text = Self::decode_text(bytes);
             // 编辑器整篇构建 galley，超大文本会冻结 UI：截断显示（原始字节保留，
             // hex 视图/导出不受影响）
             const DISPLAY_CAP: usize = 512 * 1024;
-            if text.len() > DISPLAY_CAP {
+            if text.len() > DISPLAY_CAP
+                && !(auto_format_json && crate::formatting::is_json_file(entry_path))
+            {
                 let cut = Self::char_boundary(&text, DISPLAY_CAP);
                 text = format!(
                     "{}\n/* ... 源码过大已截断显示（共 {} 字节，完整内容可导出查看） ... */\n",
@@ -82,7 +88,14 @@ impl App {
                 );
             }
             let lang = Language::from_filename(file_name);
-            EditorTab::new_text(file_name, entry_path, text, bytes.to_vec(), lang)
+            EditorTab::new_text_file(
+                file_name,
+                entry_path,
+                text,
+                bytes.to_vec(),
+                lang,
+                auto_format_json,
+            )
         }
     }
 
@@ -110,5 +123,39 @@ impl App {
             log::warn!("Text decoding had errors, replacement characters inserted");
         }
         text.into_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::editor::view_toggle::ActiveView;
+
+    #[test]
+    fn automatic_formatting_receives_complete_large_json() {
+        let text = format!(r#"{{"value":"{}"}}"#, "x".repeat(600_000));
+        let tab = App::create_tab("large.json", text.as_bytes(), true);
+        assert_eq!(tab.decompiled, text);
+        assert_eq!(tab.raw_bytes, text.as_bytes());
+    }
+
+    #[test]
+    fn image_tabs_follow_content_signatures_and_keep_raw_bytes() {
+        let pixels = image::RgbaImage::from_pixel(2, 2, image::Rgba([20, 100, 220, 255]));
+        for format in [image::ImageFormat::Png, image::ImageFormat::WebP] {
+            let mut encoded = std::io::Cursor::new(Vec::new());
+            pixels.write_to(&mut encoded, format).unwrap();
+            let bytes = encoded.into_inner();
+            let tab = App::create_tab("resources/icon.png", &bytes, true);
+            assert!(tab.is_image());
+            assert!(tab.active_view == ActiveView::Image);
+            assert!(!tab.is_text);
+            assert_eq!(tab.raw_bytes, bytes);
+            assert_eq!(tab.serialize_bytes().unwrap(), bytes);
+        }
+        let tab = App::create_tab("resources/config.png", br#"{"map":"config"}"#, true);
+        assert!(!tab.is_image());
+        assert!(tab.is_text);
+        assert_eq!(tab.decompiled, r#"{"map":"config"}"#);
     }
 }

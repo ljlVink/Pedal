@@ -3,11 +3,16 @@
 //! @author sky
 //! @author ljlVink
 
+use super::formatting::FormattedText;
+use super::image_preview::ImagePreview;
+use super::resource_tree::{ResourceTree, ResourceTreeData};
 use super::view_toggle::ActiveView;
+use crate::task::Task;
 use egui_editor::highlight::{self, Language, Span};
 use egui_editor::{EditableLayoutCache, LayoutCache};
 use egui_hex_view::HexViewState;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 tabookit::class! {
     /// 预处理后的代码视图数据（虚拟滚动用）
@@ -59,6 +64,9 @@ tabookit::class! {
         pub pending_scroll_to_line: Option<usize>,
         /// ArkTS record tab（源码/反汇编双视图）
         pub is_ark: bool,
+        pub(super) image_preview: Option<ImagePreview>,
+        pub(super) resource_tree: Option<ResourceTree>,
+        pub(super) format_task: Option<Task<FormattedText>>,
         /// 反汇编文本（首次切换视图时懒生成）
         pub(super) disasm_text: String,
         /// 反汇编视图预处理数据
@@ -93,6 +101,9 @@ tabookit::class! {
             viewport_override: None,
             pending_scroll_to_line: None,
             is_ark: false,
+            image_preview: None,
+            resource_tree: None,
+            format_task: None,
             disasm_text: String::new(),
             disasm_data: CodeData::new("", vec![]),
             disasm_layout_cache: None,
@@ -122,10 +133,45 @@ tabookit::class! {
             viewport_override: None,
             pending_scroll_to_line: None,
             is_ark: false,
+            image_preview: None,
+            resource_tree: None,
+            format_task: None,
             disasm_text: String::new(),
             disasm_data: CodeData::new("", vec![]),
             disasm_layout_cache: None,
         }
+    }
+
+    pub fn new_image(
+        title: impl Into<String>,
+        entry_path: impl Into<String>,
+        raw_bytes: Vec<u8>,
+    ) -> Self {
+        let preview = ImagePreview::new(&raw_bytes);
+        let mut tab = Self::new_binary(title, entry_path, raw_bytes);
+        tab.active_view = ActiveView::Image;
+        tab.image_preview = Some(preview);
+        tab
+    }
+
+    pub fn is_image(&self) -> bool {
+        self.image_preview.is_some()
+    }
+
+    pub(crate) fn new_resources(
+        title: impl Into<String>,
+        entry_path: impl Into<String>,
+        raw_bytes: Vec<u8>,
+        data: Arc<ResourceTreeData>,
+    ) -> Self {
+        let mut tab = Self::new_binary(title, entry_path, raw_bytes);
+        tab.active_view = ActiveView::Resources;
+        tab.resource_tree = Some(ResourceTree::new(data));
+        tab
+    }
+
+    pub fn is_resource(&self) -> bool {
+        self.resource_tree.is_some()
     }
 
     /// 设置反汇编文本（懒生成后调用）

@@ -4,10 +4,12 @@
 //! @author ljlVink
 
 /// 活跃视图
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActiveView {
     Decompiled,
     Hex,
+    Image,
+    Resources,
     /// ArkTS 反汇编视图（.ets tab 专属）
     Disasm,
 }
