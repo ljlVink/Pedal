@@ -20,6 +20,7 @@ impl Default for FloatingWindow {
             default_size: egui::vec2(600.0, 400.0),
             min_size: egui::vec2(300.0, 200.0),
             resizable: true,
+            close_button: false,
             open: false,
             pinned: false,
             size: None,
@@ -47,6 +48,7 @@ tabookit::class! {
         min_size: egui::Vec2,
         /// 是否可拖拽缩放
         resizable: bool,
+        close_button: bool,
         /// 是否打开
         pub open: bool,
         /// 是否固定（pin 后点击外部不关闭、Escape 不关闭）
@@ -89,6 +91,11 @@ tabookit::class! {
     /// 设置是否可拖拽缩放
     pub fn resizable(mut self, resizable: bool) -> Self {
         self.resizable = resizable;
+        self
+    }
+
+    pub(crate) fn close_button(mut self) -> Self {
+        self.close_button = true;
         self
     }
 

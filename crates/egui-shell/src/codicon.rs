@@ -5,7 +5,6 @@
 use eframe::egui;
 
 /// 关闭按钮 U+EAB8
-#[cfg(not(target_os = "macos"))]
 pub const CHROME_CLOSE: &str = "\u{EAB8}";
 /// 最大化按钮 U+EAB9
 #[cfg(not(target_os = "macos"))]

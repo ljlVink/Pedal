@@ -45,13 +45,34 @@ impl FloatingWindow {
             // 右侧区域：pin 按钮 + 调用方自定义内容
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(6.0);
-                self.render_pin_button(ui, theme);
+                if self.close_button {
+                    self.render_close_button(ui, theme);
+                } else {
+                    self.render_pin_button(ui, theme);
+                }
                 ui.add_space(8.0);
                 header_right(ui);
                 // 记录右侧按钮区域左边界，供 handle_move 排除此区域
                 self.header_right_x = ui.min_rect().left();
             });
         });
+    }
+
+    fn render_close_button(&mut self, ui: &mut egui::Ui, theme: &ShellTheme) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new(crate::codicon::CHROME_CLOSE)
+                        .font(egui::FontId::new(14.0, theme.icon_font.clone()))
+                        .color(theme.text_muted),
+                )
+                .corner_radius(3)
+                .min_size(egui::vec2(26.0, 24.0)),
+            )
+            .clicked()
+        {
+            self.close();
+        }
     }
 
     /// Pin/Unpin 切换按钮

@@ -18,7 +18,7 @@ const SIDEBAR_W: f32 = 130.0;
 impl<T: Clone + Serialize> Default for SettingsPanel<T> {
     fn default() -> Self {
         Self {
-            window: FloatingWindow::default(),
+            window: FloatingWindow::default().close_button(),
             active: 0,
             draft: None,
             snapshot: None,
@@ -43,7 +43,7 @@ tabookit::class! {
 
     pub fn new(id: impl Into<egui::Id>, title: impl Into<String>) -> Self {
         Self {
-            window: FloatingWindow::new(id, title),
+            window: FloatingWindow::new(id, title).close_button(),
             active: 0,
             draft: None,
             snapshot: None,
