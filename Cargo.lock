@@ -1093,6 +1093,7 @@ version = "0.2.1"
 dependencies = [
  "eframe",
  "phf",
+ "regex",
  "tree-sitter",
  "tree-sitter-html",
  "tree-sitter-json",

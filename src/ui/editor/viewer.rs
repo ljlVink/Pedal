@@ -126,6 +126,7 @@ impl TabViewer for EditorTabViewer<'_> {
             }
             return;
         }
+        tab.render_find_bar(ui);
         egui::ScrollArea::both()
             .id_salt(("editor_content", tab.active_view))
             .auto_shrink([false, false])

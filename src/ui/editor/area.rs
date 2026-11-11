@@ -167,7 +167,21 @@ tabookit::class! {
             return false;
         };
         let _ = self.dock_state.set_active_tab(tab_path);
+        self.dock_state.set_focused_node_and_surface(egui_dock::NodePath {
+            surface: tab_path.surface,
+            node: tab_path.node,
+        });
         true
+    }
+
+    pub fn can_find(&mut self) -> bool {
+        self.focused_tab().is_some_and(|tab| tab.can_find())
+    }
+
+    pub fn open_find(&mut self) {
+        if let Some(tab) = self.focused_tab() {
+            tab.open_find();
+        }
     }
 
     pub fn focused_view(&mut self) -> Option<ActiveView> {

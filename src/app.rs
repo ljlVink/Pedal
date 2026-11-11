@@ -7,6 +7,7 @@ mod ark;
 mod export;
 mod open;
 mod platform;
+pub(crate) mod search;
 mod tab;
 pub(crate) mod workspace;
 
@@ -34,6 +35,7 @@ pub struct App {
     pub(crate) workspace: Workspace,
     /// 后台 JAR 导出任务（快照已取，可跨 JAR 切换存活）
     pub(crate) exporting: Option<ExportingState>,
+    pub(crate) workspace_search: search::WorkspaceSearch,
 }
 
 impl App {
@@ -46,6 +48,7 @@ impl App {
             pending_confirm: None,
             workspace: Workspace::Empty,
             exporting: None,
+            workspace_search: search::WorkspaceSearch::default(),
         }
     }
 

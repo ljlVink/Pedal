@@ -114,6 +114,8 @@ pub struct KeymapSettings {
     pub open_settings: KeyBind,
     /// 切换视窗模式
     pub toggle_viewport: KeyBind,
+    pub find: KeyBind,
+    pub find_workspace: KeyBind,
 }
 
 impl Default for KeymapSettings {
@@ -130,6 +132,8 @@ impl Default for KeymapSettings {
             cycle_view: keybindings::DEFAULT_CYCLE_VIEW,
             open_settings: keybindings::DEFAULT_OPEN_SETTINGS,
             toggle_viewport: keybindings::DEFAULT_TOGGLE_VIEWPORT,
+            find: keybindings::DEFAULT_FIND,
+            find_workspace: keybindings::DEFAULT_FIND_WORKSPACE,
         }
     }
 }
@@ -359,6 +363,8 @@ fn render_keymap(km: &mut KeymapSettings, ui: &mut egui::Ui, st: &SettingsTheme)
         t!("settings.close_all_tabs") => close_all_tabs,
         t!("settings.cycle_view") => cycle_view,
         t!("settings.toggle_viewport") => toggle_viewport,
+        t!("search.find") => find,
+        t!("search.workspace") => find_workspace,
     );
     section_header(ui, st, &t!("settings.section_export"));
     changed |= keybind_rows!(ui, st, hint, km, defaults,
@@ -371,6 +377,25 @@ fn render_keymap(km: &mut KeymapSettings, ui: &mut egui::Ui, st: &SettingsTheme)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn existing_keymaps_receive_search_shortcuts_and_preserve_custom_bindings() {
+        let settings: Settings = toml::from_str("[keymap]\nsave = 'Ctrl+Alt+S'").unwrap();
+        assert_eq!(settings.keymap.find, crate::ui::keybindings::DEFAULT_FIND);
+        assert_eq!(
+            settings.keymap.find_workspace,
+            crate::ui::keybindings::DEFAULT_FIND_WORKSPACE
+        );
+        assert_eq!(settings.keymap.save, KeyBind::ctrl_alt(egui::Key::S));
+        let settings: Settings =
+            toml::from_str("[keymap]\nfind = 'Ctrl+G'\nfind_workspace = 'Ctrl+Shift+G'").unwrap();
+        let restored: Settings = toml::from_str(&toml::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored.keymap.find, KeyBind::ctrl(egui::Key::G));
+        assert_eq!(
+            restored.keymap.find_workspace,
+            KeyBind::ctrl_shift(egui::Key::G)
+        );
+    }
 
     #[test]
     fn auto_format_defaults_work_with_existing_settings() {

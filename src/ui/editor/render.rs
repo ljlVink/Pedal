@@ -27,10 +27,12 @@ pub fn render_decompiled(ui: &mut egui::Ui, tab: &mut EditorTab) {
         CodeViewConfig {
             lang: tab.language,
             viewport_override: tab.viewport_override,
+            matches: &tab.find.matches,
+            current: tab.find.current,
             ..CodeViewConfig::new(egui::Id::new(&tab.entry_path).with("decompiled"), &t)
         },
         &mut tab.editable_layout_cache,
-        &mut None,
+        &mut tab.find.scroll_to_line,
     );
 }
 
@@ -45,10 +47,12 @@ pub fn render_disasm(ui: &mut egui::Ui, tab: &mut EditorTab) {
         &no_line_mapping,
         CodeViewConfig {
             known_classes: None,
+            matches: &tab.find.matches,
+            current: tab.find.current,
             ..CodeViewConfig::new(egui::Id::new(&tab.entry_path).with("disasm"), &t)
         },
         &mut tab.disasm_layout_cache,
-        &mut None,
+        &mut tab.find.scroll_to_line,
     );
 }
 
@@ -63,10 +67,12 @@ pub fn render_editable(ui: &mut egui::Ui, tab: &mut EditorTab) {
         CodeViewConfig {
             lang: tab.language,
             viewport_override: tab.viewport_override,
+            matches: &tab.find.matches,
+            current: tab.find.current,
             ..CodeViewConfig::new(egui::Id::new(&tab.entry_path).with("editable"), &t)
         },
         &mut tab.editable_layout_cache,
-        &mut None,
+        &mut tab.find.scroll_to_line,
     );
     if output.value {
         tab.refresh_decompiled_data();

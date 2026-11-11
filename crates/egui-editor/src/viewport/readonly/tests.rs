@@ -1,4 +1,5 @@
 use super::*;
+use crate::FindMatch;
 use crate::code_view::code_view_readonly_editable_style;
 use crate::theme::{CodeViewTheme, SyntaxTheme};
 
@@ -35,8 +36,10 @@ struct Harness {
     text: String,
     cache: Option<EditableLayoutCache>,
     requested: Option<usize>,
+    matches: Vec<FindMatch>,
     time: f64,
     offset: f32,
+    horizontal_offset: f32,
     content_height: f32,
 }
 
@@ -49,8 +52,10 @@ impl Harness {
                 .collect(),
             cache: None,
             requested: None,
+            matches: Vec::new(),
             time: 0.0,
             offset: 0.0,
+            horizontal_offset: 0.0,
             content_height: 0.0,
         }
     }
@@ -94,16 +99,79 @@ impl Harness {
                         code_view_readonly_editable_style(
                             ui,
                             &mut self.text,
-                            CodeViewConfig::new(Self::id(), &theme()),
+                            CodeViewConfig {
+                                matches: &self.matches,
+                                current: (!self.matches.is_empty()).then_some(0),
+                                ..CodeViewConfig::new(Self::id(), &theme())
+                            },
                             &mut self.cache,
                             &mut self.requested,
                         );
                     });
                 self.offset = output.state.offset.y;
+                self.horizontal_offset = output.state.offset.x;
                 self.content_height = output.content_size.y;
             });
         })
     }
+}
+
+fn assert_match_visible_horizontally(harness: &Harness) {
+    let galley = &harness.cache.as_ref().unwrap().galley;
+    let byte_offset = galley.job.text.find("needle").unwrap();
+    let cursor = egui::text::CCursor::new(galley.job.text[..byte_offset].chars().count());
+    let line_count = harness.text.bytes().filter(|&byte| byte == b'\n').count() + 1;
+    let x = galley.pos_from_cursor(cursor).min.x
+        + line_number_width(line_count)
+        + GUTTER_PAD
+        + TEXT_PAD_LEFT
+        - harness.horizontal_offset;
+    assert!(harness.horizontal_offset > 2_000.0);
+    assert!(x > 0.0 && x < 700.0, "match x={x}");
+}
+
+#[test]
+fn ordinary_search_request_reveals_match_beyond_horizontal_view() {
+    let mut harness = Harness::new();
+    harness.text = format!("中文{}needle", "x".repeat(400));
+    let start = harness.text.find("needle").unwrap();
+    harness.matches = vec![FindMatch {
+        start,
+        end: start + "needle".len(),
+    }];
+    harness.frame(vec![]);
+    harness.requested = Some(0);
+    for _ in 0..40 {
+        harness.frame(vec![]);
+    }
+    assert_match_visible_horizontally(&harness);
+}
+
+#[test]
+fn distant_search_request_reveals_unlaid_match_horizontally() {
+    let mut harness = Harness::new();
+    harness.text = (0..10_000)
+        .map(|line| {
+            if line == 9_000 {
+                format!("中文{}needle\n", "x".repeat(400))
+            } else {
+                format!("resource_{line:05}\n")
+            }
+        })
+        .collect();
+    let start = harness.text.find("needle").unwrap();
+    harness.matches = vec![FindMatch {
+        start,
+        end: start + "needle".len(),
+    }];
+    harness.frame(vec![]);
+    assert_eq!(harness.horizontal_offset, 0.0);
+    harness.requested = Some(9_000);
+    for _ in 0..6 {
+        harness.frame(vec![]);
+    }
+    assert!(harness.requested.is_none());
+    assert_match_visible_horizontally(&harness);
 }
 
 #[test]

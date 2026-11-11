@@ -6,6 +6,7 @@ use super::gutter::{GUTTER_PAD, TEXT_PAD_LEFT, paint_line_numbers};
 use super::layout::{extract_highlight_word, paint_word_highlight_overlay};
 use super::scroll::{apply_scroll_delta, detect_edge_scroll};
 use super::text_edit::code_text_edit;
+use crate::search::FindMatch;
 use crate::theme::CodeViewTheme;
 use eframe::egui;
 use std::sync::Arc;
@@ -23,6 +24,7 @@ pub(crate) struct CodeFrameConfig<'a> {
     pub(crate) gutter_w: f32,
     pub(crate) line_count: usize,
     pub(crate) line_mapping: &'a [Option<u32>],
+    pub(crate) current_match: Option<&'a FindMatch>,
 }
 
 pub(crate) struct TextEditFrameState {
@@ -114,6 +116,7 @@ pub(crate) fn show_code_view_frame(
         theme,
         gutter_w,
         line_count,
+        current_match,
         ..
     } = config;
     let (hl_time_id, hl_line_id) = line_highlight_ids(id);
@@ -140,7 +143,24 @@ pub(crate) fn show_code_view_frame(
         }
         inspect_output(ui, &output);
         frame.response = Some(output.response.response.clone());
-        scroll_to_requested_line(ui, &output, frame.galley_y, line_count, scroll_to_line);
+        if let Some(prefix) =
+            current_match.and_then(|found| output.galley.job.text.get(..found.start))
+        {
+            let target = output
+                .galley
+                .pos_from_cursor(egui::text::CCursor::new(prefix.chars().count()));
+            ui.expand_to_include_x(
+                output.galley_pos.x + target.center().x + ui.clip_rect().width() * 0.5,
+            );
+        }
+        scroll_to_requested_line(
+            ui,
+            &output,
+            frame.galley_y,
+            line_count,
+            scroll_to_line,
+            current_match,
+        );
         if output.response.dragged() {
             let (ed, wd) = detect_edge_scroll(&output.response, ui);
             frame.edge_scroll_delta = ed;
@@ -156,17 +176,28 @@ fn scroll_to_requested_line(
     galley_y: f32,
     line_count: usize,
     scroll_to_line: &mut Option<usize>,
+    current_match: Option<&FindMatch>,
 ) {
     let Some(line) = scroll_to_line.take() else {
         return;
     };
-    let row_h = output.galley.size().y / line_count.max(1) as f32;
-    let target_y = galley_y + line as f32 * row_h;
-    let line_rect = egui::Rect::from_min_size(
-        egui::pos2(output.galley_pos.x, target_y),
-        egui::vec2(1.0, row_h),
-    );
-    ui.scroll_to_rect(line_rect, Some(egui::Align::Center));
+    let target = current_match
+        .and_then(|found| output.galley.job.text.get(..found.start))
+        .filter(|prefix| prefix.bytes().filter(|&byte| byte == b'\n').count() == line)
+        .map(|prefix| {
+            output
+                .galley
+                .pos_from_cursor(egui::text::CCursor::new(prefix.chars().count()))
+                .translate(output.galley_pos.to_vec2())
+        })
+        .unwrap_or_else(|| {
+            let row_h = output.galley.size().y / line_count.max(1) as f32;
+            egui::Rect::from_min_size(
+                egui::pos2(output.galley_pos.x, galley_y + line as f32 * row_h),
+                egui::vec2(1.0, row_h),
+            )
+        });
+    ui.scroll_to_rect(target, Some(egui::Align::Center));
 }
 
 pub(crate) fn finish_code_view_frame(

@@ -3,6 +3,7 @@
 //! @author sky
 //! @author ljlVink
 
+use super::find::FindState;
 use super::formatting::FormattedText;
 use super::image_preview::ImagePreview;
 use super::resource_tree::{ResourceTree, ResourceTreeData};
@@ -71,6 +72,7 @@ tabookit::class! {
         pub(super) disasm_data: CodeData,
         /// 反汇编视图布局缓存
         pub disasm_layout_cache: Option<LayoutCache>,
+        pub(super) find: FindState,
     }
 
     /// 创建文本文件 tab（默认 Decompiled 视图显示文本内容）
@@ -104,6 +106,7 @@ tabookit::class! {
             disasm_text: String::new(),
             disasm_data: CodeData::new("", vec![]),
             disasm_layout_cache: None,
+            find: FindState::new(),
         }
     }
 
@@ -135,6 +138,7 @@ tabookit::class! {
             disasm_text: String::new(),
             disasm_data: CodeData::new("", vec![]),
             disasm_layout_cache: None,
+            find: FindState::new(),
         }
     }
 
@@ -172,6 +176,7 @@ tabookit::class! {
 
     /// 设置反汇编文本（懒生成后调用）
     pub fn set_disasm(&mut self, text: String) {
+        self.find.invalidate();
         self.disasm_data =
             CodeData::new(&text, highlight::compute_spans(&text, Language::Bytecode));
         self.disasm_text = text;
@@ -180,6 +185,7 @@ tabookit::class! {
 
     /// 重建文本视图的高亮数据（文本编辑后调用）
     pub fn refresh_decompiled_data(&mut self) {
+        self.find.invalidate();
         self.decompiled_data = CodeData::new(
             &self.decompiled,
             highlight::compute_spans(&self.decompiled, self.language),

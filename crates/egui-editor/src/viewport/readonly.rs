@@ -107,8 +107,30 @@ pub(crate) fn code_view_readonly_viewport(
     let gutter_width = line_number_width(line_count);
     let requested = scroll_to_line.take().map(|line| line.min(line_count - 1));
     if let Some(line) = requested {
+        let line_start = state.index.bytes[line];
+        let line_end = state
+            .index
+            .bytes
+            .get(line + 1)
+            .copied()
+            .unwrap_or(text.len());
+        let target_x = current
+            .and_then(|index| matches.get(index))
+            .filter(|found| found.start >= line_start && found.start < line_end)
+            .and_then(|found| text.get(line_start..found.start))
+            .map(|prefix| {
+                let prefix_width = ui.fonts_mut(|fonts| {
+                    fonts
+                        .layout_no_wrap(prefix.to_owned(), font.clone(), theme.syntax.text)
+                        .size()
+                        .x
+                });
+                gutter_width + GUTTER_PAD + TEXT_PAD_LEFT + prefix_width
+            })
+            .unwrap_or(0.0);
+        state.max_width = state.max_width.max(target_x + clip.width() * 0.5);
         let target = egui::Rect::from_min_size(
-            egui::pos2(origin.x, origin.y + line as f32 * row_height),
+            egui::pos2(origin.x + target_x, origin.y + line as f32 * row_height),
             egui::vec2(1.0, row_height),
         );
         ui.scroll_to_rect_animation(

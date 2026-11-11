@@ -23,4 +23,26 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         ui.close();
         app.save_active_tab();
     }
+    ui.separator();
+    let can_find = app.layout.editor.can_find();
+    if menu_item_if(
+        ui,
+        mt,
+        &t!("search.find"),
+        Some(&app.settings.keymap.find),
+        can_find,
+    ) {
+        ui.close();
+        app.layout.editor.open_find();
+    }
+    if menu_item_if(
+        ui,
+        mt,
+        &t!("search.workspace"),
+        Some(&app.settings.keymap.find_workspace),
+        state.has_jar,
+    ) {
+        ui.close();
+        app.open_workspace_search();
+    }
 }

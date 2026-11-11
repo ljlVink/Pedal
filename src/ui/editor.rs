@@ -4,6 +4,7 @@
 //! @author ljlVink
 
 mod area;
+mod find;
 mod formatting;
 mod image_preview;
 mod render;

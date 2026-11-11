@@ -80,6 +80,7 @@ impl App {
         self.handle_pending_reveal();
         self.poll_tasks();
         self.poll_ark_disasm(ui.ctx());
+        self.poll_workspace_search(ui.ctx());
         self.dispatch_keybinds(ui.ctx());
         self.render_panels(ui);
         self.render_overlays(ui, shell_theme);
@@ -143,6 +144,7 @@ impl App {
 
     /// 渲染浮动层（设置、通知、FPS、确认弹窗）
     fn render_overlays(&mut self, ui: &mut egui::Ui, shell_theme: &egui_shell::ShellTheme) {
+        self.render_workspace_search(ui.ctx());
         let output = settings::show(&mut self.layout.settings_panel, ui.ctx(), shell_theme);
         if let Some(new_settings) = output.settings {
             self.apply_settings(new_settings, ui.ctx());

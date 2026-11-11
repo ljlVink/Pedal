@@ -36,8 +36,8 @@ pub(crate) struct GalleyConfig<'a> {
 ///
 /// 文本和 span 在只读模式下不变，仅搜索状态或选中高亮变化触发重建。
 pub struct LayoutCache {
-    /// 搜索匹配数
-    pub(crate) match_count: usize,
+    /// 搜索匹配范围
+    pub(crate) match_ranges: Vec<(usize, usize)>,
     /// 当前高亮的匹配索引
     pub(crate) current_match: Option<usize>,
     /// 上一帧选中的高亮词（用于缓存命中判断）
@@ -97,10 +97,9 @@ impl LayoutCache {
             word_gen,
         } = highlights;
         move |ui, text_buf, _wrap_width| {
-            let mc = match_ref.len();
             let cm = current;
             if let Some(c) = cache.as_ref()
-                && c.match_count == mc
+                && c.match_ranges == match_ref
                 && c.current_match == cm
                 && c.galley_word_gen == word_gen
             {
@@ -117,7 +116,7 @@ impl LayoutCache {
                 .unwrap_or_default();
             let old_wg = cache.as_ref().map_or(0, |c| c.word_gen);
             *cache = Some(LayoutCache {
-                match_count: mc,
+                match_ranges: match_ref.to_vec(),
                 current_match: cm,
                 highlight_word: old_hw,
                 word_highlight_ranges: old_wr,
@@ -138,8 +137,8 @@ pub struct EditableLayoutCache {
     pub(crate) text_hash: u64,
     /// 缓存的语法高亮 span
     pub(crate) spans: Vec<Span>,
-    /// 搜索匹配数
-    pub(crate) match_count: usize,
+    /// 搜索匹配范围
+    pub(crate) match_ranges: Vec<(usize, usize)>,
     /// 当前高亮的匹配索引
     pub(crate) current_match: Option<usize>,
     /// 缓存的 galley
@@ -432,12 +431,11 @@ pub(crate) fn rebuild_galley(
         word_ranges,
         word_gen,
     } = highlights;
-    let mc = match_ranges.len();
     // 缓存命中
     if let Some(c) = cache.as_ref()
         && c.text_hash == text_hash
         && !c.stale
-        && c.match_count == mc
+        && c.match_ranges == match_ranges
         && c.current_match == current_match
         && c.galley_word_gen == word_gen
     {
@@ -470,7 +468,7 @@ pub(crate) fn rebuild_galley(
     *cache = Some(EditableLayoutCache {
         text_hash,
         spans,
-        match_count: mc,
+        match_ranges: match_ranges.to_vec(),
         current_match,
         galley: galley.clone(),
         stale: false,
@@ -487,4 +485,115 @@ pub(crate) fn rebuild_galley(
         galley_word_gen: word_gen,
     });
     Some(galley)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::SyntaxTheme;
+
+    fn theme() -> CodeViewTheme {
+        let color = egui::Color32::WHITE;
+        CodeViewTheme {
+            syntax: SyntaxTheme {
+                text: color,
+                keyword: color,
+                opcode: color,
+                string: color,
+                type_name: color,
+                number: color,
+                comment: color,
+                annotation: color,
+                muted: color,
+                constant: color,
+                method_call: color,
+                method_declaration: color,
+            },
+            bg: color,
+            gutter_bg: color,
+            line_number_color: color,
+            search_bg: egui::Color32::YELLOW,
+            search_current_bg: egui::Color32::GREEN,
+            code_font_size: 14.0,
+            line_highlight: color,
+            word_highlight_bg: color,
+        }
+    }
+
+    fn highlights(ranges: &[(usize, usize)]) -> LayoutHighlights<'_> {
+        LayoutHighlights {
+            match_ranges: ranges,
+            current_match: Some(0),
+            word_ranges: &[],
+            word_gen: 0,
+        }
+    }
+
+    fn highlighted_ranges(galley: &egui::Galley) -> Vec<std::ops::Range<usize>> {
+        galley
+            .job
+            .sections
+            .iter()
+            .filter(|section| section.format.background == egui::Color32::GREEN)
+            .map(|section| section.byte_range.clone())
+            .collect()
+    }
+
+    #[test]
+    fn readonly_cache_updates_same_count_search_ranges() {
+        let ctx = egui::Context::default();
+        let theme = theme();
+        let mut cache = None;
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let text = "foo bar";
+            let mut layout = |ranges: &[(usize, usize)]| {
+                LayoutCache::build_layouter(&[], highlights(ranges), &theme, &mut cache)(
+                    ui,
+                    &text,
+                    f32::INFINITY,
+                )
+            };
+            let first = layout(&[(0, 3)]);
+            assert!(Arc::ptr_eq(&first, &layout(&[(0, 3)])));
+            let changed = layout(&[(4, 7)]);
+            assert_eq!(highlighted_ranges(&first), vec![0..3]);
+            assert_eq!(highlighted_ranges(&changed), vec![4..7]);
+            assert!(!Arc::ptr_eq(&first, &changed));
+        });
+    }
+
+    #[test]
+    fn editable_cache_updates_search_ranges_and_preserves_viewport_position() {
+        let ctx = egui::Context::default();
+        let theme = theme();
+        let mut cache = None;
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let mut layout = |ranges: &[(usize, usize)]| {
+                rebuild_galley(
+                    ui,
+                    "foo bar",
+                    hash_text("foo bar"),
+                    GalleyConfig {
+                        lang: Language::Plain,
+                        highlights: highlights(ranges),
+                        theme: &theme,
+                        is_viewport: true,
+                        viewport_cursor_char: 42,
+                        viewport_window_start: 20,
+                    },
+                    &mut cache,
+                )
+                .unwrap()
+            };
+            let first = layout(&[(0, 3)]);
+            assert!(Arc::ptr_eq(&first, &layout(&[(0, 3)])));
+            let changed = layout(&[(4, 7)]);
+            assert_eq!(highlighted_ranges(&changed), vec![4..7]);
+            assert!(!Arc::ptr_eq(&first, &changed));
+            let cache = cache.as_ref().unwrap();
+            assert!(cache.is_viewport);
+            assert_eq!(cache.viewport_cursor_char, 42);
+            assert_eq!(cache.viewport_window_start, 20);
+        });
+    }
 }

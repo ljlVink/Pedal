@@ -74,10 +74,11 @@ impl App {
             EditorTab::new_binary(file_name, entry_path, bytes.to_vec())
         } else {
             let mut text = Self::decode_text(bytes);
-            // 编辑器整篇构建 galley，超大文本会冻结 UI：截断显示（原始字节保留，
-            // hex 视图/导出不受影响）
+            // 代码使用大文本视窗，其余未格式化文本保留显示上限。
+            // 原始字节保留，hex 视图/导出不受影响。
             const DISPLAY_CAP: usize = 512 * 1024;
             if text.len() > DISPLAY_CAP
+                && !super::search::is_code_path(entry_path)
                 && !(auto_format_json && crate::formatting::is_json_file(entry_path))
             {
                 let cut = Self::char_boundary(&text, DISPLAY_CAP);
@@ -109,12 +110,12 @@ impl App {
     }
 
     /// 判断字节内容是否为二进制文件（前 8KB 内含 null 字节即视为二进制）
-    fn is_binary(bytes: &[u8]) -> bool {
+    pub(super) fn is_binary(bytes: &[u8]) -> bool {
         bytes[..bytes.len().min(8192)].contains(&0)
     }
 
     /// 将字节解码为文本（自动检测编码）
-    fn decode_text(bytes: &[u8]) -> String {
+    pub(super) fn decode_text(bytes: &[u8]) -> String {
         let mut detector = chardetng::EncodingDetector::new(chardetng::Iso2022JpDetection::Allow);
         detector.feed(bytes, true);
         let encoding = detector.guess(None, chardetng::Utf8Detection::Allow);
@@ -135,6 +136,14 @@ mod tests {
     fn automatic_formatting_receives_complete_large_json() {
         let text = format!(r#"{{"value":"{}"}}"#, "x".repeat(600_000));
         let tab = App::create_tab("large.json", text.as_bytes(), true);
+        assert_eq!(tab.decompiled, text);
+        assert_eq!(tab.raw_bytes, text.as_bytes());
+    }
+
+    #[test]
+    fn searchable_code_preserves_text_past_the_display_cap() {
+        let text = format!("{}\nconst target = 1;", " ".repeat(600_000));
+        let tab = App::create_tab("large.ets", text.as_bytes(), false);
         assert_eq!(tab.decompiled, text);
         assert_eq!(tab.raw_bytes, text.as_bytes());
     }

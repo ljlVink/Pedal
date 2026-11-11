@@ -218,6 +218,7 @@ impl App {
         self.layout.file_panel.roots = Vec::new();
         self.layout.file_panel.selected = None;
         self.layout.editor = EditorArea::new();
+        self.workspace_search.reset();
         self.exporting = None;
         self.workspace = Workspace::Loading(LoadingState {
             name,
@@ -237,6 +238,7 @@ impl App {
         self.layout.file_panel.roots = Vec::new();
         self.layout.file_panel.selected = None;
         self.layout.editor = EditorArea::new();
+        self.workspace_search.reset();
         self.exporting = None;
         self.workspace = Workspace::ArkLoading(ArkLoadingState {
             name,
@@ -332,6 +334,7 @@ mod tests {
             pending_confirm: None,
             workspace: Workspace::Loaded(Box::new(loaded)),
             exporting: None,
+            workspace_search: Default::default(),
         }
     }
 

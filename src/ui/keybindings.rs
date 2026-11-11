@@ -17,6 +17,8 @@ pub const DEFAULT_CLOSE_ALL_TABS: KeyBind = KeyBind::ctrl_alt(egui::Key::W);
 pub const DEFAULT_CYCLE_VIEW: KeyBind = KeyBind::key(egui::Key::Tab);
 pub const DEFAULT_OPEN_SETTINGS: KeyBind = KeyBind::ctrl(egui::Key::Comma);
 pub const DEFAULT_TOGGLE_VIEWPORT: KeyBind = KeyBind::ctrl(egui::Key::M);
+pub const DEFAULT_FIND: KeyBind = KeyBind::ctrl(egui::Key::F);
+pub const DEFAULT_FIND_WORKSPACE: KeyBind = KeyBind::ctrl_shift(egui::Key::F);
 
 /// 根据用户配置构建 KeyMap
 pub fn build_keymap(km: &KeymapSettings) -> KeyMap<App> {
@@ -34,6 +36,8 @@ pub fn build_keymap(km: &KeymapSettings) -> KeyMap<App> {
         .bind(km.save, |a: &mut App| a.save_active_tab())
         .bind(km.cycle_view, |a: &mut App| a.layout.editor.cycle_view())
         .bind(km.open_settings, |a: &mut App| a.open_settings())
+        .bind(km.find, |a: &mut App| a.layout.editor.open_find())
+        .bind(km.find_workspace, |a: &mut App| a.open_workspace_search())
         .bind(km.toggle_viewport, |a: &mut App| {
             a.layout.editor.toggle_viewport()
         })

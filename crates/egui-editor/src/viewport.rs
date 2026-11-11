@@ -152,7 +152,7 @@ pub(crate) fn code_view_editable_viewport(
     text: &mut String,
     config: CodeViewConfig<'_>,
     cache: &mut Option<EditableLayoutCache>,
-    _scroll_to_line: &mut Option<usize>,
+    scroll_to_line: &mut Option<usize>,
     editable: bool,
 ) -> bool {
     let CodeViewConfig {
@@ -182,8 +182,29 @@ pub(crate) fn code_view_editable_viewport(
     let gutter_w = line_number_width(total_line_count);
 
     // 上一帧的光标位置和窗口起点
-    let cursor_char = cache.as_ref().map_or(0, |c| c.viewport_cursor_char);
-    let prev_window_start = cache.as_ref().map(|c| c.viewport_window_start);
+    let requested_cursor = scroll_to_line.take().map(|line| {
+        if let Some(found) = current.and_then(|index| matches.get(index))
+            && let Some(prefix) = text.get(..found.start)
+            && prefix.bytes().filter(|&byte| byte == b'\n').count() == line
+        {
+            return prefix.chars().count();
+        }
+        if line == 0 {
+            return 0;
+        }
+        text.chars()
+            .enumerate()
+            .filter(|(_, character)| *character == '\n')
+            .nth(line - 1)
+            .map_or(total_chars, |(offset, _)| offset + 1)
+    });
+    let cursor_char =
+        requested_cursor.unwrap_or_else(|| cache.as_ref().map_or(0, |c| c.viewport_cursor_char));
+    let prev_window_start = if requested_cursor.is_some() {
+        None
+    } else {
+        cache.as_ref().map(|c| c.viewport_window_start)
+    };
     let (win_start_char, win_end_char) = calculate_viewport_window(
         cursor_char,
         total_chars,
@@ -192,8 +213,15 @@ pub(crate) fn code_view_editable_viewport(
     );
 
     // 视窗模式禁用 undo：每帧清空 undoer
-    if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
-        if let Some(previous) = prev_window_start
+    if requested_cursor.is_some() || egui::TextEdit::load_state(ui.ctx(), id).is_some() {
+        let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+        if let Some(requested) = requested_cursor {
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(
+                    egui::text::CCursor::new(requested.saturating_sub(win_start_char)),
+                )));
+        } else if let Some(previous) = prev_window_start
             && previous != win_start_char
         {
             let remapped = state.cursor.char_range().map(|mut range| {
@@ -308,6 +336,7 @@ pub(crate) fn code_view_editable_viewport(
             ui.add_space(gutter_w + GUTTER_PAD + TEXT_PAD_LEFT);
             let output =
                 code_text_edit(&mut viewport_buf, id, code_font.clone(), &mut layouter).show(ui);
+            scroll_to_requested_cursor(ui, &output, requested_cursor, win_start_char);
             galley_y = output.galley_pos.y;
             out_galley = Some(output.galley.clone());
             out_galley_pos = output.galley_pos;
@@ -336,6 +365,7 @@ pub(crate) fn code_view_editable_viewport(
             ui.add_space(gutter_w + GUTTER_PAD + TEXT_PAD_LEFT);
             let output =
                 code_text_edit(&mut viewport_buf, id, code_font.clone(), &mut layouter).show(ui);
+            scroll_to_requested_cursor(ui, &output, requested_cursor, win_start_char);
             galley_y = output.galley_pos.y;
             out_galley = Some(output.galley.clone());
             out_galley_pos = output.galley_pos;
@@ -423,6 +453,26 @@ pub(crate) fn code_view_editable_viewport(
     changed
 }
 
+fn scroll_to_requested_cursor(
+    ui: &mut egui::Ui,
+    output: &egui::text_edit::TextEditOutput,
+    requested: Option<usize>,
+    window_start: usize,
+) {
+    if let Some(requested) = requested {
+        let cursor = egui::text::CCursor::new(requested.saturating_sub(window_start));
+        let rect = output
+            .galley
+            .pos_from_cursor(cursor)
+            .translate(output.galley_pos.to_vec2());
+        ui.scroll_to_rect_animation(
+            rect,
+            Some(egui::Align::Center),
+            egui::style::ScrollAnimation::none(),
+        );
+    }
+}
+
 /// 视窗模式指示器（右下角显示当前窗口范围）
 fn paint_viewport_indicator(
     ui: &egui::Ui,
@@ -445,4 +495,110 @@ fn paint_viewport_indicator(
     );
     painter.rect_filled(bg_rect, 3.0, theme.bg.gamma_multiply(0.85));
     painter.galley(pos, galley, theme.line_number_color);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::search::FindMatch;
+    use crate::theme::SyntaxTheme;
+
+    fn theme() -> CodeViewTheme {
+        let color = egui::Color32::WHITE;
+        CodeViewTheme {
+            syntax: SyntaxTheme {
+                text: color,
+                keyword: color,
+                opcode: color,
+                string: color,
+                type_name: color,
+                number: color,
+                comment: color,
+                annotation: color,
+                muted: color,
+                constant: color,
+                method_call: color,
+                method_declaration: color,
+            },
+            bg: color,
+            gutter_bg: color,
+            line_number_color: color,
+            search_bg: color,
+            search_current_bg: color,
+            code_font_size: 14.0,
+            line_highlight: color,
+            word_highlight_bg: color,
+        }
+    }
+
+    #[test]
+    fn distant_search_matches_recenter_editable_and_long_line_readonly_views() {
+        for editable in [true, false] {
+            let ctx = egui::Context::default();
+            let mut text = format!("{}needle{}", "中".repeat(30_000), "文".repeat(10_000));
+            let original = text.clone();
+            let mut cache = None;
+            let mut requested = Some(0);
+            let matches = [FindMatch {
+                start: 90_000,
+                end: 90_006,
+            }];
+            let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+                egui::ScrollArea::both().show(ui, |ui| {
+                    code_view_editable_viewport(
+                        ui,
+                        &mut text,
+                        CodeViewConfig {
+                            matches: &matches,
+                            current: Some(0),
+                            ..CodeViewConfig::new(egui::Id::new("find_viewport"), &theme())
+                        },
+                        &mut cache,
+                        &mut requested,
+                        editable,
+                    );
+                });
+            });
+            let cache = cache.unwrap();
+            assert_eq!(cache.viewport_cursor_char, 30_000);
+            assert!(cache.viewport_window_start > 0);
+            assert!(cache.galley.job.text.contains("needle"));
+            assert_eq!(text, original);
+            assert_eq!(requested, None);
+        }
+    }
+
+    #[test]
+    fn line_requests_ignore_search_matches_on_other_lines() {
+        for editable in [true, false] {
+            let ctx = egui::Context::default();
+            let mut text = format!("needle\n{}", "中文line\n".repeat(20_000));
+            let original = text.clone();
+            let mut cache = None;
+            let mut requested = Some(9_000);
+            let matches = [FindMatch { start: 0, end: 6 }];
+            let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+                egui::ScrollArea::both().show(ui, |ui| {
+                    code_view_editable_viewport(
+                        ui,
+                        &mut text,
+                        CodeViewConfig {
+                            matches: &matches,
+                            current: Some(0),
+                            ..CodeViewConfig::new(egui::Id::new("line_viewport"), &theme())
+                        },
+                        &mut cache,
+                        &mut requested,
+                        editable,
+                    );
+                });
+            });
+            let cache = cache.unwrap();
+            assert_eq!(cache.viewport_cursor_char, 63_000);
+            assert!(cache.viewport_window_start > 0);
+            assert!(!cache.galley.job.text.contains("needle"));
+            assert_eq!(text, original);
+            assert_eq!(requested, None);
+        }
+    }
 }
