@@ -98,7 +98,7 @@ tabookit::class! {
             };
             thread::scope(|scope| {
                 for _ in 1..workers {
-                    scope.spawn(&worker);
+                    scope.spawn(worker);
                 }
                 worker();
             });
