@@ -40,6 +40,9 @@ cargo test -p pedal-abc-bridge --locked
 # 某一组小样本回归；筛选器是模块名/测试名的一部分
 cargo test -p pedal-abc-bridge --test regression iterator_recovery
 
+# 共享分支 DAG 的内存增长与执行语义回归（无需大型语料）
+cargo test -p pedal-abc-bridge --test regression shared_branch_dag
+
 # 只测正式 CLI
 cargo test -p pedal --test cli
 
@@ -72,6 +75,10 @@ test_examples/
 
 这些断言针对特定真实应用版本，不保证任意同名包都满足断言；新增或更换语料时应说明
 版本和回归场景，并同步检查测试预期。
+
+共享分支回归使用小型合成 CFG：两条分支反复进入相同尾部、最终到达不同出口。
+检查原始 IR 大小随块数线性增长，并对照字节码执行结果验证调用次数、返回值、
+异常边和处理器累加器；无法直接组成树的共享块使用显式块状态，不能靠截断源码避开膨胀。
 
 ## 样本维护
 

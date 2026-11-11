@@ -410,6 +410,90 @@ fn compare(
     );
 }
 
+/// 每个条件块跳到后第二块，两个不同出口使共享尾部不能用单一汇合点表示。
+fn shared_branch_chain(blocks: usize) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for block in 0..blocks {
+        // 调用 a4 留下可观测副作用，再用 a3 选择下一块或后第二块。
+        bytes.extend([0x60, 5, 0x29, 0, 0x60, 4, 0x4f]);
+        bytes.push(if block + 1 == blocks { 8 } else { 10 });
+    }
+    bytes.extend([0x62, 0, 0, 0, 0, 0x64, 0x62, 1, 0, 0, 0, 0x64]);
+    bytes
+}
+
+#[test]
+fn shared_branch_dag_has_linear_ir_and_preserves_calls_and_both_returns() {
+    let blocks = 19;
+    let bytes = shared_branch_chain(blocks);
+    let (file, class, method) = fixture(&bytes, &[], 1);
+    let code = method.code.as_ref().unwrap();
+    let ins = disasm::decode(&bytes).unwrap();
+    let cfg = decompile::cfg::build(&ins, bytes.len(), &[]);
+    let mut body = decompile::lift::lift(&file, &class, &method, code, &cfg, None).stmts;
+    // 检查原始 IR，而非 polish 后碰巧合并的结果，避免再次构建指数大小的树。
+    let mut pending = vec![body.as_slice()];
+    let mut statements = 0;
+    while let Some(scope) = pending.pop() {
+        statements += scope.len();
+        assert!(statements <= 16 * (blocks + 2), "shared CFG was duplicated");
+        for stmt in scope {
+            match stmt {
+                Stmt::If(_, left, right) => {
+                    pending.push(left);
+                    pending.push(right);
+                }
+                Stmt::While(_, body) => pending.push(body),
+                Stmt::Expr(_) | Stmt::Return(_) | Stmt::Break | Stmt::Continue => {}
+                other => panic!("unexpected shared CFG statement: {other:?}"),
+            }
+        }
+    }
+    for polished in [false, true] {
+        if polished {
+            decompile::structure::polish(&mut body);
+        }
+        for flag in [false, true] {
+            let mut original = Execution::new(flag, None);
+            let expected = original.bytecode(&bytes, &[], 1);
+            assert_eq!(expected, Completion::Return(Value::Int(i64::from(!flag))));
+            assert_eq!(
+                original.calls,
+                vec![0; if flag { blocks } else { blocks.div_ceil(2) }]
+            );
+            let mut recovered = Execution::new(flag, None);
+            assert_eq!(
+                (recovered.stmts(&body), recovered.calls),
+                (expected, original.calls),
+                "flag={flag}, polished={polished}"
+            );
+        }
+    }
+}
+
+#[test]
+fn shared_branch_dag_preserves_exception_edges_and_handler_accumulator() {
+    let blocks = 9;
+    let mut bytes = shared_branch_chain(blocks);
+    let handler_pc = bytes.len() as u32;
+    // handler 直接返回 VM 累加器中的异常，不重新执行失败调用。
+    bytes.push(0x64);
+    let regions = vec![TryBlock {
+        start_pc: 0,
+        length: (blocks * 8) as u32,
+        catch_blocks: vec![CatchBlock {
+            type_idx: 0,
+            handler_pc,
+            code_size: 1,
+        }],
+    }];
+    for flag in [false, true] {
+        for throwing in [None, Some(0)] {
+            compare(&bytes, &regions, 1, flag, throwing, false);
+        }
+    }
+}
+
 #[test]
 fn split_try_tail_retains_both_calls_and_catch_call_scope() {
     let mut a = Asm::default();

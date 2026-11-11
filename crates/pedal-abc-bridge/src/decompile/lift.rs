@@ -149,6 +149,8 @@ struct Lifter<'a> {
     is_async: bool,
     finally_candidates: Vec<(String, Vec<Stmt>, u32, bool)>,
     raw_fallback: Option<&'static str>,
+    /// 跨分支共享的块不能反复复制成树；遇到重复发射改用显式块状态。
+    emitted_blocks: Vec<bool>,
     /// VM hole 是内部唯一值，不能与用户抛出的 undefined 混淆。
     hole_sentinel: Option<u32>,
     /// 接收者沿正常/异常边仍为 this 的 super 属性指令。
@@ -279,6 +281,7 @@ pub(crate) fn lift_with_lexical_names(
         is_async,
         finally_candidates: Vec::new(),
         hole_sentinel,
+        emitted_blocks: vec![false; cfg.blocks.len()],
         super_receivers: proven_super_receivers(&ins, cfg, code, legacy, &lexical_names.this_loads),
         raw_fallback: if !is_async && ins.iter().any(|i| i.meta.mnemonic == "asyncfunctionenter") {
             Some("unrecognized async resume protocol")
@@ -1576,9 +1579,12 @@ impl<'a> Lifter<'a> {
         let mut visited = vec![false; self.cfg.blocks.len()];
         let no_stop: Vec<usize> = Vec::new();
         let mut stmts = self.emit_seq(0, &no_stop, &mut visited);
-        crate::decompile::structure::recover_finally(&mut stmts, &self.finally_candidates);
+        if self.raw_fallback.is_none() {
+            crate::decompile::structure::recover_finally(&mut stmts, &self.finally_candidates);
+        }
         if self.raw_fallback.is_some() {
-            if let Some(recovered) = self.emit_exception_cfg() {
+            drop(stmts);
+            if let Some(recovered) = self.emit_cfg_dispatch() {
                 self.stmts = recovered;
                 self.prepend_hole_sentinel();
                 return;
@@ -1695,15 +1701,16 @@ impl<'a> Lifter<'a> {
         }
     }
 
-    /// 不能安全嵌套的异常 CFG 使用显式块状态，不跨保护边界搬移求值。
+    /// 共享控制流或不能安全嵌套的异常区域使用显式块状态，每个块只发射一次。
     /// 每个块只受其最内层 catchall 保护；处理器本身在下一轮按自己的覆盖执行。
-    fn emit_exception_cfg(&mut self) -> Option<Vec<Stmt>> {
+    fn emit_cfg_dispatch(&mut self) -> Option<Vec<Stmt>> {
         if !matches!(
             self.raw_fallback,
             Some(
                 "multiple unresolved exception-region exits"
                     | "unverified normal exception-handler entry"
                     | "unverified shared finally continuation"
+                    | "shared control-flow blocks"
             )
         ) || self.cfg.blocks.is_empty()
             || self.exception_regions.iter().any(|r| {
@@ -1718,6 +1725,7 @@ impl<'a> Lifter<'a> {
             return None;
         }
         self.raw_fallback = None;
+        self.emitted_blocks.fill(false);
         self.stmts.clear();
         self.next_temp = self.num_vregs + self.num_args;
         self.hole_sentinel = None;
@@ -1896,6 +1904,9 @@ impl<'a> Lifter<'a> {
         let mut out: Vec<Stmt> = Vec::new();
         let mut bi = entry;
         loop {
+            if self.raw_fallback.is_some() {
+                break;
+            }
             if bi >= self.cfg.blocks.len() || stop.contains(&bi) {
                 break;
             }
@@ -2271,6 +2282,9 @@ impl<'a> Lifter<'a> {
             let saved_persisted = self.acc_persisted;
             let saved_regs = self.regs.clone();
             let saved_loops = std::mem::take(&mut self.active_loops);
+            // 清理体是用于 finally 识别的独立分析，不与正常/异常路径共享发射记录。
+            let saved_emitted =
+                std::mem::replace(&mut self.emitted_blocks, vec![false; self.cfg.blocks.len()]);
             self.acc = Expr::Bool(true);
             self.acc_persisted = true;
             let mut cleanup = self.emit_seq(
@@ -2290,6 +2304,7 @@ impl<'a> Lifter<'a> {
             self.acc_persisted = saved_persisted;
             self.regs = saved_regs;
             self.active_loops = saved_loops;
+            self.emitted_blocks = saved_emitted;
             crate::decompile::structure::polish(&mut cleanup);
             // 此入口只可能携带真实异常，绝不等于内部 hole 哨兵。
             // 直接保留清理与重抛，避免把 hole 当成 JS undefined 丢失拒绝路径。
@@ -2424,6 +2439,10 @@ impl<'a> Lifter<'a> {
 
     /// 块内指令提升（不含控制流处理）
     fn emit_block_insns(&mut self, bi: usize, out: &mut Vec<Stmt>) {
+        if std::mem::replace(&mut self.emitted_blocks[bi], true) {
+            self.raw_fallback = Some("shared control-flow blocks");
+            return;
+        }
         let saved = std::mem::take(&mut self.stmts);
         let (start, end) = {
             let b = &self.cfg.blocks[bi];
