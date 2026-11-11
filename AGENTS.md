@@ -2,6 +2,19 @@
 
 Pedal - ArkTS (HarmonyOS `.abc`/HAP) decompiler and archive viewer. Rust 2024 edition workspace (egui 0.34 GUI). MIT licensed.
 
+## Working agreement
+
+- Follow the user's current explicit requirements and the runtime instruction hierarchy. Apply project rules only within their actual scope.
+- **DO NOT send optional commentary.** Keep necessary clarification, real blockers, final delivery and runtime-required notices. Follow the applicable project `output.md`; if absent, read `references/output.md` from the installed `agent-workstyle` skill. Reuse rules already read while unchanged. User-facing replies use Simplified Chinese and no emojis.
+- Final replies state the result, necessary verification, limitations and delivery location concisely. Do not append commit suggestions or conditional offers to continue.
+- **Git operations require explicit authorization**: do not proactively stage, commit, push, merge, rebase, rewrite commits or publish. Requests to finish, fix or prepare work do not authorize these operations; leave workspace changes for review and do not routinely ask to commit. When an operation is explicitly authorized, read the skill's `references/authorized-git.md`; local commits and remote operations each require their own authorization scope.
+- Confirm the actual repository root, existing changes and target paths before editing. Read applicable directory rules and preserve user changes. Recognize both `.git` files and directories; do not initialize a nested repository.
+- Reuse existing capabilities and preserve public contracts, supported versions, lockfiles and generated-source relationships. Keep changes within the task; avoid unrelated refactoring, framework migrations and repository-wide formatting.
+- Run the smallest sufficient behavior checks and required project checks. Distinguish simulation, integration, build and actual execution; report unverified behavior accurately. Reuse valid results when code, inputs and environment are unchanged. Do not weaken checks to claim success.
+- Clean up only temporary files created during the current task and confirmed unnecessary, after checking their paths and references. Preserve user files, deliverables, valid tests, configuration, lockfiles, migrations, data and required generated artifacts; untracked or ignored status alone never authorizes deletion. Stop only processes started for this task that are no longer needed.
+- When maintaining project rules, documents or cleanup procedures, read the skill's `references/project-rules.md`. Within the authorized scope, update existing documents in place for stable facts or constraints; README edits require the explicit authorization described below. Keep chat history, work logs and temporary task lists out of `AGENTS.md` and READMEs.
+- If parallel agent work is used, assign file ownership, share the no-commit and no-new-comments defaults, and verify the combined result. On resuming work, check the latest user requirements and active authorization.
+
 ## Commands
 
 ```bash
@@ -41,10 +54,12 @@ No runtime dependencies - Ark bytecode parsing and decompilation are pure Rust a
 
 ## Conventions
 
-- Doc comments are Chinese; new modules start with `//! <summary>` and `//! @author ljlVink`. Any author marker in a new file (including scripts) uses `ljlVink`. Leave author markers in existing files unchanged.
+- **No new source comments by default**: express intent through names, types and structure. Do not add line/block/doc comments, explanatory docstrings, file banners, change logs or placeholder task comments; new modules do not require summary or author comments. Preserve valid existing comments, licenses, generated markers, necessary execution directives and machine metadata. Treat type annotations, decorators and attributes according to language semantics.
+- Correct inaccurate existing comments only within the task's scope. Put necessary explanations in suitable existing documentation or the reply. Only an explicit source-comment request grants an exception, limited to the requested scope; explanation or teaching requests do not. Authorized doc comments use Chinese; any authorized new author marker uses `ljlVink`, while existing author markers remain unchanged. Do not add suppression comments to hide problems; for mandatory documentation or safety requirements, try a compatible implementation first and ask only about the affected part if a required check or delivery condition remains blocked, citing the actual requirement.
 - Prefer `tabookit::class!` for new struct+impl definitions in app code (matches `settings.rs` et al.).
 - Use match ergonomics (`match &value` / `if let Some(x) = &value`), not `ref`/`ref mut` patterns.
-- `README.md` (English) and `README_CN.md` (Chinese) are kept in parallel. Update the root READMEs only when the user explicitly asks, or when a change affects installation, usage, or public documentation and needs explanation; do not update them mechanically after every feature or file change. Crate-level `crates/*/README.md` documents each library's API - update when changing a crate's public surface.
+- **README* edits require explicit user authorization**: this applies to the root, crates, tests, fixtures and every other directory. Modify only README files and content covered by the user's request. Feature, API, installation or usage changes alone do not authorize README edits; preserve existing content and user changes.
+- For authorized README edits, update the relevant sections in place without unrelated rewriting, formatting or work logs. Keep `README.md` (English) and `README_CN.md` (Chinese) consistent when both are within the authorized scope. Crate-level `crates/*/README.md` documents each library's API.
 
 ## Scripts
 
@@ -57,4 +72,4 @@ See `tests/README.md` for commands, layout and required optional-corpus filename
 - Keep private unit tests beside their implementation; bridge integration tests live under `crates/pedal-abc-bridge/tests/regression/`.
 - Small `tests/fixtures/` ABCs, source probes and regeneration/comparison scripts are tracked. Missing required fixtures must fail, never silently skip. Normal tests need neither the SDK nor Node.
 - Put large-corpus tests under `crates/pedal-abc-bridge/tests/corpus/`, with an explicit `#[ignore = "..."]` reason. Run them with `cargo test -p pedal-abc-bridge --test corpus -- --ignored`; a selected test with missing input must fail with its path.
-- Keep test-specific instructions in `tests/README.md` and fixture READMEs; routine test maintenance does not require root README changes.
+- Existing test-specific instructions live in `tests/README.md` and fixture READMEs. Editing these files follows the same explicit-authorization rule for all README* files.
