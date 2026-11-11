@@ -23,7 +23,11 @@ pub fn setup(ctx: &egui::Context) {
         "cjk".to_owned(),
         egui::FontData::from_static(CJK_FONT).into(),
     );
-    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+    for family in [
+        egui::FontFamily::Proportional,
+        egui::FontFamily::Monospace,
+        codicon::family(),
+    ] {
         fonts
             .families
             .entry(family)

@@ -70,7 +70,7 @@ missing or invalid inputs fail. No SDK, Node or application corpus is required.
 with the required path when input is missing. Keep all new large-corpus tests in
 this target rather than in default regression or unit tests.
 
-See the workspace `tests/README.md` and `tests/fixtures/README.md` in this crate
+See the workspace `tests/fixtures/README.md` in this crate
 for directory ownership, commands, regeneration and optional Node comparisons.
 
 ## Source readability and correctness

@@ -40,17 +40,17 @@ No runtime dependencies - Ark bytecode parsing and decompilation are pure Rust a
 | `crates/egui-hex-view/`, `egui-keybind/`, `egui-notify/`, `egui-animation/` | Hex inspector, keybinding, toasts, animation helpers. |
 | `crates/tabookit/` | Macros: `chain!`, `or!`, `first!`, `ensure!`, and `class!` (Kotlin-style struct+impl blocks - used throughout the app). |
 | `crates/egui-patch/`, `crates/egui-dock-patch/` | **Vendored patched copies** of `egui` 0.34 and `egui_dock` 0.19, wired through `[patch.crates-io]` in the root `Cargo.toml`. Treat as upstream code: don't restructure or restyle; only carry deliberate local fixes. |
-| `locales/` | rust-i18n catalogs: `en.yml` + `zh.yml`, fallback `zh-CN`. |
+| `locales/` | rust-i18n catalogs: `en.yml` + `zh.yml`, fallback `en`. |
 
 ## Rules that cross file boundaries
 
 - **Generated ISA tables**: `crates/pedal-abc-bridge/src/isa_gen.rs` is generated from OpenHarmony `arkcompiler_runtime_core` `isa.yaml` by `scripts/gen_isa.py`; the legacy-opcode override table in `isa.rs` is learned from real `0.1.0.7` corpus files by `scripts/gen_isa_legacy.py`. Never hand-edit - regenerate (commands in the crate README).
-- **i18n**: every user-facing string goes through `t!("key")`. Any new key must be added to **both** `locales/en.yml` and `locales/zh.yml`. Placeholders use `%{name}`.
+- **i18n**: GUI-facing strings go through `t!("key")`, except the status bar version label, which uses Cargo package metadata directly. New GUI keys must be added to **both** `locales/en.yml` and `locales/zh.yml`. Placeholders use `%{name}`. CLI output is English: `clap` generates help, version and argument diagnostics; analysis/export messages use `locales/en.yml` through the English fallback.
 - **UI threading**: never block the UI thread. Background work uses `src/task.rs` (`Task<T>` = `thread::spawn` + `mpsc`, non-blocking `poll()` per frame; `Poll::{Ready,Pending,Lost}`). Progress is shared via `AtomicU32`. Bridge-level operations return `Result<T, AbcError>` / `Result<T, ArchiveError>` (`Send`, crosses threads via channels).
 - **ArkTS workspaces are read-only**: the virtual `JarArchive` built by `ark.rs` must not be written back (`Ctrl+S` / Export JAR are gated off; only Export Decompiled works). HAP repacking (abc re-encoding) does not exist yet - keep save paths guarded by `loaded.ark.is_none()`.
 - **Colors/theme**: crates take theme structs as parameters and hardcode no colors; app colors live in `src/appearance/theme.rs`. Factory functions (e.g. `editor_theme()`, `hex_theme()`) wire them.
 - **Settings persistence**: TOML via `egui_shell::components::SettingsFile` under `dirs::config_dir()`. Every settings section is `#[serde(default)]` so new fields don't break old configs.
-- Release version `0.0.1` appears in every workspace `Cargo.toml`, `status.version` in both locale files, and the macOS plist in `.github/workflows/release.yml` - bump all of them together.
+- Release version `0.0.1` appears in every workspace `Cargo.toml` and the macOS plist in `.github/workflows/release.yml` - bump all of them together. The status bar derives its version from `CARGO_PKG_VERSION`.
 
 ## Conventions
 
@@ -67,9 +67,6 @@ No runtime dependencies - Ark bytecode parsing and decompilation are pure Rust a
 
 ## Tests
 
-See `tests/README.md` for commands, layout and required optional-corpus filenames. `cargo test` at the root only tests the app package; use `cargo test --workspace --locked` for the complete owned workspace. Vendored patch crates are not workspace test members.
-
 - Keep private unit tests beside their implementation; bridge integration tests live under `crates/pedal-abc-bridge/tests/regression/`.
 - Small `tests/fixtures/` ABCs, source probes and regeneration/comparison scripts are tracked. Missing required fixtures must fail, never silently skip. Normal tests need neither the SDK nor Node.
 - Put large-corpus tests under `crates/pedal-abc-bridge/tests/corpus/`, with an explicit `#[ignore = "..."]` reason. Run them with `cargo test -p pedal-abc-bridge --test corpus -- --ignored`; a selected test with missing input must fail with its path.
-- Existing test-specific instructions live in `tests/README.md` and fixture READMEs. Editing these files follows the same explicit-authorization rule for all README* files.

@@ -7,7 +7,7 @@ use pedal_abc_bridge::{
 };
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn camera_static_corpus_contains_real_typed_prototypes() {
     let path = super::corpus_path("system_framework/camera_framework_taihe_abc.abc");
     let file = AbcFile::parse(std::fs::read(path).unwrap()).unwrap();

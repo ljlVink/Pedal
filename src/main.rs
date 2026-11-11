@@ -8,7 +8,7 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-rust_i18n::i18n!("locales", fallback = "zh-CN");
+rust_i18n::i18n!("locales", fallback = "en");
 
 mod app;
 mod appearance;

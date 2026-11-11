@@ -10,6 +10,7 @@ edition = "2024"
 mimalloc = "0.1"
 log = "0.4"
 env_logger = "0.11"
+clap = { version = "4.6", features = ["derive"] }
 eframe = { version = "0.34.1", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
 egui_dock = "0.19"
 egui-notify = { path = "crates/egui-notify" }

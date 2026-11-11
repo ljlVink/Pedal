@@ -5,6 +5,7 @@
 use super::FloatingWindow;
 use crate::app::ShellTheme;
 use eframe::egui;
+use eframe::egui::emath::GuiRounding;
 
 /// 将窗口内 Ui 的 visuals 设置为匹配 ShellTheme 的风格
 pub(super) fn apply_style(ui: &mut egui::Ui, theme: &ShellTheme) {
@@ -46,7 +47,7 @@ impl FloatingWindow {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(6.0);
                 if self.close_button {
-                    self.render_close_button(ui, theme);
+                    self.render_close_button(ui);
                 } else {
                     self.render_pin_button(ui, theme);
                 }
@@ -58,19 +59,25 @@ impl FloatingWindow {
         });
     }
 
-    fn render_close_button(&mut self, ui: &mut egui::Ui, theme: &ShellTheme) {
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(crate::codicon::CHROME_CLOSE)
-                        .font(egui::FontId::new(14.0, theme.icon_font.clone()))
-                        .color(theme.text_muted),
-                )
+    fn render_close_button(&mut self, ui: &mut egui::Ui) {
+        let response = ui.add(
+            egui::Button::new("")
                 .corner_radius(3)
                 .min_size(egui::vec2(26.0, 24.0)),
-            )
-            .clicked()
-        {
+        );
+        let visuals = ui.style().interact(&response);
+        let rect = egui::Rect::from_center_size(
+            response.rect.center(),
+            egui::Vec2::splat(ui.spacing().icon_width),
+        )
+        .round_to_pixels(ui.pixels_per_point())
+        .shrink(2.0)
+        .expand(visuals.expansion);
+        ui.painter()
+            .line_segment([rect.left_top(), rect.right_bottom()], visuals.fg_stroke);
+        ui.painter()
+            .line_segment([rect.right_top(), rect.left_bottom()], visuals.fg_stroke);
+        if response.clicked() {
             self.close();
         }
     }

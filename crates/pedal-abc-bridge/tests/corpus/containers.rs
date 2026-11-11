@@ -28,7 +28,7 @@ fn decode_coverage(file: &AbcFile) -> (usize, usize) {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn modern_abc_from_hap_parses_and_decodes() {
     let hap_path = super::corpus_path("AppGallery/service.hap");
     let data = std::fs::read(&hap_path).unwrap();
@@ -44,7 +44,7 @@ fn modern_abc_from_hap_parses_and_decodes() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn modern_abc_decompiles_records() {
     let hap_path = super::corpus_path("AppGallery/service.hap");
     let hap = HapArchive::parse(std::fs::read(&hap_path).unwrap()).unwrap();
@@ -64,7 +64,7 @@ fn modern_abc_decompiles_records() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn appgallery_widget_constructor_marks_erased_types_and_arkui_hints() {
     let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
@@ -91,7 +91,7 @@ fn appgallery_widget_constructor_marks_erased_types_and_arkui_hints() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn appgallery_analytics_constants_recover_all_72_static_values() {
     let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
@@ -115,7 +115,7 @@ fn appgallery_analytics_constants_recover_all_72_static_values() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn appgallery_download_key_resolver_initializes_register_declarations() {
     let path = super::corpus_path("AppGallery/@hw-ae-business+download-install-default.hsp");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
@@ -149,7 +149,7 @@ fn appgallery_download_key_resolver_initializes_register_declarations() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn appgallery_entry_property_tables_rest_callbacks_and_object_methods_recover() {
     let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
@@ -197,7 +197,7 @@ fn appgallery_entry_property_tables_rest_callbacks_and_object_methods_recover() 
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn legacy_abc_parses_and_mostly_decodes() {
     let abc_path = super::corpus_path("system_framework/crypto_framework_ets.abc");
     let file = AbcFile::parse(std::fs::read(&abc_path).unwrap()).unwrap();
@@ -217,7 +217,7 @@ fn legacy_abc_parses_and_mostly_decodes() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn appgallery_about_sheet_recovers_imported_base_and_implicit_constructor() {
     let path = super::corpus_path("AppGallery/entry.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
@@ -254,7 +254,7 @@ fn appgallery_about_sheet_recovers_imported_base_and_implicit_constructor() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn hap_listing_categorizes_entries() {
     let hap_path = super::corpus_path("Hinote/HiNote.hap");
     let hap = HapArchive::parse(std::fs::read(&hap_path).unwrap()).unwrap();
@@ -264,7 +264,7 @@ fn hap_listing_categorizes_entries() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn hinote_logutil_lifts_globals_and_lexvars() {
     // 回归：tryldglobalbyname 未实现 / ldlexvar 误写寄存器时，
     // LogUtil 会渲染成 undefined.info(...) 且操作数串位
@@ -295,7 +295,7 @@ fn hinote_logutil_lifts_globals_and_lexvars() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn hinote_diagnostic_records_recover_module_class_and_private_instructions() {
     let path = super::corpus_path("Hinote/HiNote.hap");
     let hap = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();

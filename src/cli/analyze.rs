@@ -148,7 +148,7 @@ tabookit::class! {
     }
 }
 
-pub(super) fn run(input: &Path, output: &Path, jobs: usize) -> Result<Report, String> {
+pub(super) fn run(input: &Path, output: &Path) -> Result<Report, String> {
     let extension = input
         .extension()
         .unwrap_or_default()
@@ -171,7 +171,7 @@ pub(super) fn run(input: &Path, output: &Path, jobs: usize) -> Result<Report, St
     }
     let mut exporter = Exporter {
         output: output.to_path_buf(),
-        jobs,
+        jobs: thread::available_parallelism().map_or(1, usize::from),
         report: Report {
             input: input.to_string_lossy().into_owned(),
             ..Report::default()

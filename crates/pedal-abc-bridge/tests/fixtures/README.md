@@ -33,4 +33,3 @@ documented in `advanced_recovery/README.md`.
 
 Keep generated inspection output out of this directory. Commit small input
 sources, ABCs and tools together, and run the regression suite before submitting.
-See the [project testing guide](../../../../tests/README.md) for suite selection.

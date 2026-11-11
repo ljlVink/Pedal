@@ -9,7 +9,7 @@ pub fn read_fixture(relative_path: &str) -> Vec<u8> {
         .join(relative_path);
     std::fs::read(&path).unwrap_or_else(|error| {
         panic!(
-            "failed to read required fixture {}: {error}. Restore the tracked tests/fixtures files; see tests/README.md",
+            "failed to read required fixture {}: {error}. Restore the tracked tests/fixtures files",
             path.display()
         )
     })

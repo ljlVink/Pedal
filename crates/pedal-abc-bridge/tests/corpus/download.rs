@@ -4,7 +4,7 @@
 use pedal_abc_bridge::{decompile, file::AbcFile, hap::HapArchive};
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn actual_find_queue_name_method_recovers_from_its_exception_table() {
     let path = super::corpus_path("AppGallery/@hw-ae-business+download-install-default.hsp");
     let archive = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();
@@ -34,7 +34,7 @@ fn actual_find_queue_name_method_recovers_from_its_exception_table() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn optional_download_corpus_recovers_shared_join_methods() {
     let root = super::corpus_path("AppGallery/@hw-ae-business+download-install-default.hsp");
     let archive = pedal_abc_bridge::hap::HapArchive::parse(std::fs::read(root).unwrap()).unwrap();
@@ -69,7 +69,7 @@ fn optional_download_corpus_recovers_shared_join_methods() {
 }
 
 #[test]
-#[ignore = "requires optional test_examples corpus; see tests/README.md"]
+#[ignore = "requires optional test_examples corpus"]
 fn module_constants_and_member_captures_share_declarations_after_frame_changes() {
     let path = super::corpus_path("AppGallery/@hw-ae-business+download-install-default.hsp");
     let archive = HapArchive::parse(std::fs::read(path).unwrap()).unwrap();

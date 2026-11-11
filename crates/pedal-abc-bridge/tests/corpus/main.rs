@@ -13,7 +13,7 @@ fn corpus_path(relative_path: &str) -> PathBuf {
         .join(relative_path);
     assert!(
         path.is_file(),
-        "optional corpus file missing: {}. Supply this file or run the default tests without --ignored; see tests/README.md",
+        "optional corpus file missing: {}. Supply this file or run the default tests without --ignored;",
         path.display()
     );
     path
