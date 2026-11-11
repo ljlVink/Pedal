@@ -153,7 +153,6 @@ settings.browse: "浏览"
 settings.press_key: "请按一个键..."
 
 # 状态栏
-status.version: "Pedal v0.0.1"
 status.hex: "Hex"
 status.modified: "● %{count} 已修改"
 status.changed: "● %{count} 未保存"

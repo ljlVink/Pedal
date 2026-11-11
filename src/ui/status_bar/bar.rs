@@ -10,7 +10,6 @@ use crate::appearance::theme;
 use crate::ui::editor::view_toggle::ActiveView;
 use eframe::egui;
 use egui_shell::components::panel::status_bar::{StatusBarWidget, StatusItem};
-use rust_i18n::t;
 
 tabookit::class! {
     /// 状态栏服务
@@ -56,7 +55,7 @@ tabookit::class! {
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 0.0, theme::palette().bg_dark);
         let version = ui.painter().layout_no_wrap(
-            t!("status.version").to_string(),
+            concat!("Pedal v", env!("CARGO_PKG_VERSION")).to_owned(),
             egui::FontId::proportional(11.0),
             theme::palette().text_muted,
         );
