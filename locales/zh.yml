@@ -11,6 +11,8 @@ cli.help: |
 
   输入支持 .abc、.hap、.hsp、.har、.app（包括嵌套包）。
   必须指定 -o, --output <dir>，使用新目录或空目录。
+  -j, --jobs <count> 指定并行处理 record 的线程数，默认使用全部可用逻辑 CPU。
+  并发越高内存占用越大；-j 1 使用串行导出，清单顺序不受并发影响。
   以 - 开头的输入前加 --，以 - 开头的输出路径前加 ./。
   每个 ABC 使用独立编号目录；manifest.json 记录源码与原始 record 的对应关系及失败详情。
   退出码：0 = 成功，1 = 分析或导出失败（包括部分失败），2 = 参数错误。
@@ -18,6 +20,8 @@ cli.version: "Pedal %{version}"
 cli.unknown_option: "未知选项：%{option}"
 cli.duplicate_output: "-o / --output 只能指定一次。"
 cli.missing_output: "请通过 -o <dir> 或 --output <dir> 指定输出目录。"
+cli.duplicate_jobs: "-j / --jobs 只能指定一次。"
+cli.invalid_jobs: "请在 -j / --jobs 后指定正整数。"
 cli.missing_input: "请在 analyze 后指定输入文件。"
 cli.unexpected_argument: "多余或无效的参数：%{argument}"
 cli.complete: "已处理 %{abcs} 个 ABC，导出 %{records} 个 record，失败 %{failures} 项。清单：%{path}"

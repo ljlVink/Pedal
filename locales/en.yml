@@ -11,6 +11,8 @@ cli.help: |
 
   Input: .abc, .hap, .hsp, .har, .app (including nested packages).
   -o, --output <dir> is required; use a new or empty directory.
+  -j, --jobs <count> controls parallel record workers; defaults to all available logical CPUs.
+  More workers use more memory. Use -j 1 for serial export; manifest order stays unchanged.
   Use -- before an input beginning with '-', and ./ before an output beginning with '-'.
   Each ABC gets a numbered directory. manifest.json maps sources to original records and lists failures.
   Exit codes: 0 = success, 1 = analysis/export failure (including partial results), 2 = invalid arguments.
@@ -18,6 +20,8 @@ cli.version: "Pedal %{version}"
 cli.unknown_option: "Unknown option: %{option}"
 cli.duplicate_output: "Specify -o / --output only once."
 cli.missing_output: "Specify an output directory with -o <dir> or --output <dir>."
+cli.duplicate_jobs: "Specify -j / --jobs only once."
+cli.invalid_jobs: "Specify a positive integer after -j / --jobs."
 cli.missing_input: "Specify an input file after analyze."
 cli.unexpected_argument: "Unexpected argument: %{argument}"
 cli.complete: "Processed %{abcs} ABC file(s), exported %{records} record(s), %{failures} failure(s). Manifest: %{path}"

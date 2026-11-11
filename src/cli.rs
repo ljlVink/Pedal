@@ -13,7 +13,11 @@ use std::path::PathBuf;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Command {
     Gui(Option<PathBuf>),
-    Analyze { input: PathBuf, output: PathBuf },
+    Analyze {
+        input: PathBuf,
+        output: PathBuf,
+        jobs: Option<usize>,
+    },
     Help,
     Version,
 }
@@ -42,6 +46,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
 
     let mut input = None;
     let mut output = None;
+    let mut jobs = None;
     let mut positional = false;
     while let Some(arg) = args.next() {
         if !positional && (arg == "--help" || arg == "-h") {
@@ -59,6 +64,16 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
             output = Some(PathBuf::from(
                 value.ok_or_else(|| t!("cli.missing_output").into_owned())?,
             ));
+        } else if !positional && (arg == "-j" || arg == "--jobs") {
+            if jobs.is_some() {
+                return Err(t!("cli.duplicate_jobs").into_owned());
+            }
+            jobs = Some(
+                args.next()
+                    .and_then(|value| value.to_str().and_then(|value| value.parse::<usize>().ok()))
+                    .filter(|jobs| *jobs > 0)
+                    .ok_or_else(|| t!("cli.invalid_jobs").into_owned())?,
+            );
         } else if !positional && arg.as_encoded_bytes().starts_with(b"-") {
             return Err(t!("cli.unknown_option", option = arg.to_string_lossy()).into_owned());
         } else if arg.is_empty() || input.replace(PathBuf::from(&arg)).is_some() {
@@ -70,6 +85,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
     Ok(Command::Analyze {
         input: input.ok_or_else(|| t!("cli.missing_input").into_owned())?,
         output: output.ok_or_else(|| t!("cli.missing_output").into_owned())?,
+        jobs,
     })
 }
 
@@ -85,7 +101,15 @@ pub(crate) fn run(command: Result<Command, String>) -> i32 {
             println!("{}", t!("cli.version", version = env!("CARGO_PKG_VERSION")));
             0
         }
-        Ok(Command::Analyze { input, output }) => match analyze::run(&input, &output) {
+        Ok(Command::Analyze {
+            input,
+            output,
+            jobs,
+        }) => match analyze::run(
+            &input,
+            &output,
+            jobs.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from)),
+        ) {
             Ok(report) => {
                 println!(
                     "{}",
@@ -148,7 +172,8 @@ mod tests {
                 parse_strings(&args).unwrap(),
                 Command::Analyze {
                     input: "应用.hap".into(),
-                    output: "out dir".into()
+                    output: "out dir".into(),
+                    jobs: None,
                 }
             );
         }
@@ -156,8 +181,41 @@ mod tests {
             parse_strings(&["analyze", "-o", "./-out", "--", "-file.abc"]).unwrap(),
             Command::Analyze {
                 input: "-file.abc".into(),
-                output: "./-out".into()
+                output: "./-out".into(),
+                jobs: None,
             }
+        );
+    }
+
+    #[test]
+    fn parses_explicit_worker_counts() {
+        for option in ["-j", "--jobs"] {
+            assert_eq!(
+                parse_strings(&["analyze", "x.abc", option, "4", "-o", "out"]).unwrap(),
+                Command::Analyze {
+                    input: "x.abc".into(),
+                    output: "out".into(),
+                    jobs: Some(4),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_or_duplicate_worker_counts() {
+        for value in [
+            "0",
+            "-1",
+            "",
+            "abc",
+            "1.5",
+            "999999999999999999999999999999",
+        ] {
+            assert!(parse_strings(&["analyze", "x.abc", "-o", "out", "-j", value]).is_err());
+        }
+        assert!(parse_strings(&["analyze", "x.abc", "-o", "out", "-j"]).is_err());
+        assert!(
+            parse_strings(&["analyze", "x.abc", "-o", "out", "-j", "1", "--jobs", "2"]).is_err()
         );
     }
 

@@ -8,6 +8,8 @@ use serde::Serialize;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::thread;
 
 /// 嵌套应用包的递归上限，避免异常容器耗尽调用栈。
 const MAX_PACKAGE_DEPTH: usize = 16;
@@ -39,6 +41,7 @@ pub(super) struct Report {
 tabookit::class! {
     struct Exporter {
         output: PathBuf,
+        jobs: usize,
         report: Report,
     }
 
@@ -69,27 +72,41 @@ tabookit::class! {
             self.fail(name, None, io_error(&out_dir, error));
             return;
         }
-        for (index, record) in file.classes.iter().enumerate() {
-            let relative = format!("{directory}/{:04}-{}.ets", index + 1, safe_name(&record.name));
-            let path = self.output.join(&relative);
-            let result = decompile::decompile_record(&file, record)
-                .map_err(|e| e.to_string())
-                .and_then(|result| {
-                    let source = if result.source.trim().is_empty() {
-                        // 无方法体的声明及外部类型也导出文件，清单保留原始名称。
-                        format!("// {}\n", t!("cli.empty_record"))
-                    } else {
-                        result.source
-                    };
-                    write_new(&path, source.as_bytes())
-                });
-            match result {
-                Ok(()) => self.report.sources.push(Source {
-                    abc: name.to_string(),
-                    record: record.name.clone(),
-                    offset: record.offset,
-                    file: relative,
-                }),
+        let workers = self.jobs.min(file.classes.len());
+        if workers <= 1 {
+            for (index, record) in file.classes.iter().enumerate() {
+                match export_record(&file, index, name, &self.output, &directory) {
+                    Ok(source) => self.report.sources.push(source),
+                    Err(error) => self.fail(name, Some(&record.name), error),
+                }
+            }
+            return;
+        }
+
+        let mut results: Vec<Option<Result<Source, String>>> =
+            (0..file.classes.len()).map(|_| None).collect();
+        {
+            // 队列只分配互不重叠的结果槽；解编译及写盘均在锁外完成。
+            let queue = Mutex::new(results.iter_mut().enumerate());
+            let output = &self.output;
+            let worker = || loop {
+                let next = queue.lock().expect("record export queue poisoned").next();
+                let Some((index, slot)) = next else {
+                    break;
+                };
+                *slot = Some(export_record(&file, index, name, output, &directory));
+            };
+            thread::scope(|scope| {
+                for _ in 1..workers {
+                    scope.spawn(&worker);
+                }
+                worker();
+            });
+        }
+        // 完成顺序不影响清单或错误输出；编号始终使用原始 record 序号。
+        for (record, result) in file.classes.iter().zip(results) {
+            match result.expect("record export worker left a result empty") {
+                Ok(source) => self.report.sources.push(source),
                 Err(error) => self.fail(name, Some(&record.name), error),
             }
         }
@@ -131,7 +148,7 @@ tabookit::class! {
     }
 }
 
-pub(super) fn run(input: &Path, output: &Path) -> Result<Report, String> {
+pub(super) fn run(input: &Path, output: &Path, jobs: usize) -> Result<Report, String> {
     let extension = input
         .extension()
         .unwrap_or_default()
@@ -154,6 +171,7 @@ pub(super) fn run(input: &Path, output: &Path) -> Result<Report, String> {
     }
     let mut exporter = Exporter {
         output: output.to_path_buf(),
+        jobs,
         report: Report {
             input: input.to_string_lossy().into_owned(),
             ..Report::default()
@@ -178,6 +196,36 @@ pub(super) fn run(input: &Path, output: &Path) -> Result<Report, String> {
     let json = serde_json::to_vec_pretty(&exporter.report).map_err(|e| io_error(&manifest, e))?;
     write_new(&manifest, &json)?;
     Ok(exporter.report)
+}
+
+fn export_record(
+    file: &AbcFile,
+    index: usize,
+    name: &str,
+    output: &Path,
+    directory: &str,
+) -> Result<Source, String> {
+    let record = &file.classes[index];
+    let relative = format!(
+        "{directory}/{:04}-{}.ets",
+        index + 1,
+        safe_name(&record.name)
+    );
+    let path = output.join(&relative);
+    let result = decompile::decompile_record(file, record).map_err(|e| e.to_string())?;
+    let source = if result.source.trim().is_empty() {
+        // 无方法体的声明及外部类型也导出文件，清单保留原始名称。
+        format!("// {}\n", t!("cli.empty_record"))
+    } else {
+        result.source
+    };
+    write_new(&path, source.as_bytes())?;
+    Ok(Source {
+        abc: name.to_string(),
+        record: record.name.clone(),
+        offset: record.offset,
+        file: relative,
+    })
 }
 
 /// 数字前缀由调用方提供；限制单个组件长度，替换跨平台不安全字符。

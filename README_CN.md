@@ -36,8 +36,14 @@
 ```bash
 pedal analyze app.hap -o out
 pedal analyze modules.abc --output out-abc
+pedal analyze modules.abc -o out-limited --jobs 4
 pedal --help
 ```
+
+默认使用全部可用逻辑 CPU 并行反编译 record。通过 `-j` / `--jobs` 指定正整数
+线程数（`-j 1` 为串行导出）。线程共享输入 ABC，但并发反编译会增加内存占用。
+耗时 record 不再阻塞其他 record，单个慢 record 仍可能拖延最终完成时间。
+输出文件编号和清单顺序不受线程数影响。
 
 
 ## 构建

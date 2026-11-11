@@ -37,8 +37,15 @@ Open any HarmonyOS artifact - `.hap` / `.hsp` / `.har` / `.app` packages or raw 
 ```bash
 pedal analyze app.hap -o out
 pedal analyze modules.abc --output out-abc
+pedal analyze modules.abc -o out-limited --jobs 4
 pedal --help
 ```
+
+Record decompilation uses all available logical CPUs by default. `-j` / `--jobs`
+sets a positive worker count (`-j 1` for serial export). Workers share the input
+ABC, but concurrent decompilation increases memory use. Slow records do not block
+other records; a single slow record can still delay final completion. Output
+numbering and manifest order remain the same regardless of worker count.
 
 ## Build
 
