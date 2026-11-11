@@ -11,7 +11,6 @@ use super::viewer::{EditorTabViewer, TabAction};
 use crate::appearance::theme;
 use eframe::egui;
 use egui_dock::{DockArea, DockState, SurfaceIndex};
-use egui_editor::find_bar::FindBar;
 use rust_i18n::t;
 use std::collections::HashSet;
 
@@ -20,8 +19,6 @@ tabookit::class! {
     pub struct EditorArea {
         /// egui-dock 管理的 tab 布局
         pub dock_state: DockState<EditorTab>,
-        /// 编辑器内查找栏
-        pub find_bar: FindBar,
         /// 被 is_modified 拦截的关闭动作，由 App 消费并弹出确认对话框
         pub blocked_close: Option<TabAction>,
         /// 待懒生成的 ArkTS 反汇编条目
@@ -30,7 +27,6 @@ tabookit::class! {
     pub fn new() -> Self {
         Self {
             dock_state: DockState::new(vec![]),
-            find_bar: FindBar::new(),
             blocked_close: None,
             pending_disasm: None,
         }
@@ -49,7 +45,6 @@ tabookit::class! {
         let style = dock::build(ui.style());
         let mut viewer = EditorTabViewer {
             action: None,
-            find_bar: &mut self.find_bar,
             jar_modified,
             pending_close: None,
         };
@@ -84,12 +79,9 @@ tabookit::class! {
         let painter = ui.painter();
         let center = rect.center();
         let hint_open = t!("editor.open_file");
-        let hint_find = t!("editor.find_in_files");
-        let hint_shift = t!("editor.double_shift").to_string();
         let hint_project = t!("editor.project_view");
         let hints: &[(&str, String)] = &[
             (&hint_open, keybindings::DEFAULT_OPEN_JAR.label()),
-            (&hint_find, hint_shift),
             (&hint_project, keybindings::DEFAULT_TOGGLE_EXPLORER.label()),
         ];
         let font_action = egui::FontId::proportional(13.0);
@@ -168,11 +160,6 @@ tabookit::class! {
 
     /// 聚焦已打开的 tab（按 entry_path 匹配），返回是否找到
     pub fn focus_tab(&mut self, entry_path: &str) -> bool {
-        self.focus_tab_at(entry_path, None)
-    }
-
-    /// 切换到指定 tab 并滚动到目标行
-    pub fn focus_tab_at(&mut self, entry_path: &str, line: Option<usize>) -> bool {
         let found = self
             .dock_state
             .find_tab_from(|tab| tab.entry_path.as_deref() == Some(entry_path));
@@ -180,10 +167,6 @@ tabookit::class! {
             return false;
         };
         let _ = self.dock_state.set_active_tab(tab_path);
-        if let Some(line) = line
-            && let Some(tab) = self.focused_tab() {
-                tab.pending_scroll_to_line = Some(line);
-            }
         true
     }
 
@@ -270,21 +253,6 @@ tabookit::class! {
                     tab.set_disasm(text);
                 }
         }
-    }
-
-    /// 打开/聚焦编辑器内查找栏
-    pub fn open_find(&mut self) {
-        if let Some(tab) = self.focused_tab()
-            && tab.active_view == ActiveView::Resources
-            && let Some(tree) = &mut tab.resource_tree {
-                tree.request_search_focus();
-                return;
-            }
-        if let Some(tab) = self.focused_tab()
-            && tab.active_view == ActiveView::Image {
-                tab.active_view = ActiveView::Hex;
-            }
-        self.find_bar.toggle();
     }
 
     /// 切换当前 tab 的视窗模式

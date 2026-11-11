@@ -9,7 +9,6 @@ use super::tab::EditorTab;
 use crate::appearance::theme;
 use eframe::egui;
 use egui_editor::code_view::CodeViewConfig;
-use egui_editor::search::FindMatch;
 
 pub use egui_editor::code_view::line_number_width;
 
@@ -20,35 +19,23 @@ pub fn paint_editor_bg(ui: &egui::Ui, full_rect: egui::Rect, gutter_w: f32) {
 }
 
 /// 只读源码视图，保留大文本视窗和文本选择能力
-pub fn render_decompiled(
-    ui: &mut egui::Ui,
-    tab: &mut EditorTab,
-    matches: &[FindMatch],
-    current: Option<usize>,
-) {
+pub fn render_decompiled(ui: &mut egui::Ui, tab: &mut EditorTab) {
     let t = theme::editor_theme();
     egui_editor::code_view::code_view_readonly_editable_style(
         ui,
         &mut tab.decompiled,
         CodeViewConfig {
             lang: tab.language,
-            matches,
-            current,
             viewport_override: tab.viewport_override,
             ..CodeViewConfig::new(egui::Id::new(&tab.entry_path).with("decompiled"), &t)
         },
         &mut tab.editable_layout_cache,
-        &mut tab.pending_scroll_to_line,
+        &mut None,
     );
 }
 
 /// ArkTS 反汇编视图（只读，pandasm 文本）
-pub fn render_disasm(
-    ui: &mut egui::Ui,
-    tab: &mut EditorTab,
-    matches: &[FindMatch],
-    current: Option<usize>,
-) {
+pub fn render_disasm(ui: &mut egui::Ui, tab: &mut EditorTab) {
     let t = theme::editor_theme();
     let no_line_mapping: [Option<u32>; 0] = [];
     egui_editor::code_view::code_view(
@@ -57,38 +44,29 @@ pub fn render_disasm(
         &tab.disasm_data.spans,
         &no_line_mapping,
         CodeViewConfig {
-            matches,
-            current,
             known_classes: None,
             ..CodeViewConfig::new(egui::Id::new(&tab.entry_path).with("disasm"), &t)
         },
         &mut tab.disasm_layout_cache,
-        &mut tab.pending_scroll_to_line,
+        &mut None,
     );
 }
 
 /// 可编辑文本视图
 ///
 /// 文本变更后自动刷新语法高亮数据并标记 tab 为已修改。
-pub fn render_editable(
-    ui: &mut egui::Ui,
-    tab: &mut EditorTab,
-    matches: &[FindMatch],
-    current: Option<usize>,
-) {
+pub fn render_editable(ui: &mut egui::Ui, tab: &mut EditorTab) {
     let t = theme::editor_theme();
     let output = egui_editor::code_view::code_view_editable(
         ui,
         &mut tab.decompiled,
         CodeViewConfig {
             lang: tab.language,
-            matches,
-            current,
             viewport_override: tab.viewport_override,
             ..CodeViewConfig::new(egui::Id::new(&tab.entry_path).with("editable"), &t)
         },
         &mut tab.editable_layout_cache,
-        &mut tab.pending_scroll_to_line,
+        &mut None,
     );
     if output.value {
         tab.refresh_decompiled_data();
@@ -97,20 +75,7 @@ pub fn render_editable(
 }
 
 /// Hex 视图
-pub fn render_hex(
-    ui: &mut egui::Ui,
-    tab: &mut EditorTab,
-    matches: &[FindMatch],
-    current: Option<usize>,
-) {
+pub fn render_hex(ui: &mut egui::Ui, tab: &mut EditorTab) {
     let t = super::style::hex::hex_theme();
-    let highlights: Vec<(usize, usize)> = matches.iter().map(|m| (m.start, m.end)).collect();
-    egui_hex_view::show(
-        ui,
-        &tab.raw_bytes,
-        &mut tab.hex_state,
-        &t,
-        &highlights,
-        current,
-    );
+    egui_hex_view::show(ui, &tab.raw_bytes, &mut tab.hex_state, &t, &[], None);
 }

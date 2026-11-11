@@ -23,8 +23,6 @@ pub const PACKAGE: &str = "\u{EB29}";
 pub const CHEVRON_RIGHT: &str = "\u{EAB6}";
 /// 向下箭头（展开状态）
 pub const CHEVRON_DOWN: &str = "\u{EAB4}";
-/// 向上箭头
-pub const CHEVRON_UP: &str = "\u{EAB5}";
 /// 全部展开
 pub const EXPAND_ALL: &str = "\u{EB95}";
 /// 全部折叠
@@ -34,16 +32,8 @@ pub const COLLAPSE_ALL: &str = "\u{EAC5}";
 pub const SEARCH: &str = "\u{EA6D}";
 /// 设置齿轮
 pub const SETTINGS_GEAR: &str = "\u{EB51}";
-/// 关闭 / X 号
-pub const CLOSE: &str = "\u{EA76}";
 /// 图钉（大头针，竖直）
 pub const PIN: &str = "\u{EBA0}";
-/// 大小写敏感
-pub const CASE_SENSITIVE: &str = "\u{EB77}";
-/// 正则表达式
-pub const REGEX: &str = "\u{EB38}";
-/// 全词匹配
-pub const WHOLE_WORD: &str = "\u{EB7E}";
 /// 键盘
 pub const KEYBOARD: &str = "\u{EB44}";
 

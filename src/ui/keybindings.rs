@@ -8,11 +8,9 @@ use eframe::egui;
 use egui_keybind::{KeyBind, KeyMap};
 
 pub const DEFAULT_TOGGLE_EXPLORER: KeyBind = KeyBind::alt(egui::Key::Num1);
-pub const DEFAULT_FIND_IN_FILES: KeyBind = KeyBind::ctrl_shift(egui::Key::F);
 pub const DEFAULT_OPEN_JAR: KeyBind = KeyBind::ctrl(egui::Key::O);
 pub const DEFAULT_EXPORT_DECOMPILED: KeyBind = KeyBind::ctrl_shift(egui::Key::E);
 pub const DEFAULT_EXPORT_JAR: KeyBind = KeyBind::ctrl_shift(egui::Key::S);
-pub const DEFAULT_FIND: KeyBind = KeyBind::ctrl(egui::Key::F);
 pub const DEFAULT_SAVE: KeyBind = KeyBind::ctrl(egui::Key::S);
 pub const DEFAULT_CLOSE_TAB: KeyBind = KeyBind::ctrl(egui::Key::W);
 pub const DEFAULT_CLOSE_ALL_TABS: KeyBind = KeyBind::ctrl_alt(egui::Key::W);
@@ -33,7 +31,6 @@ pub fn build_keymap(km: &KeymapSettings) -> KeyMap<App> {
         .bind(km.close_all_tabs, |a: &mut App| {
             a.layout.editor.close_all_tabs()
         })
-        .bind(km.find, |a: &mut App| a.layout.editor.open_find())
         .bind(km.save, |a: &mut App| a.save_active_tab())
         .bind(km.cycle_view, |a: &mut App| a.layout.editor.cycle_view())
         .bind(km.open_settings, |a: &mut App| a.open_settings())
@@ -42,5 +39,4 @@ pub fn build_keymap(km: &KeymapSettings) -> KeyMap<App> {
         })
         .bind(km.export_decompiled, |a: &mut App| a.export_decompiled())
         .bind(km.export_jar, |a: &mut App| a.export_jar())
-        .bind_double_shift(|a: &mut App| a.layout.search.open())
 }

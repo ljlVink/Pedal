@@ -60,8 +60,6 @@ tabookit::class! {
         pub editable_layout_cache: Option<EditableLayoutCache>,
         /// 视窗模式手动覆盖（None = 自动检测，Some(true) = 强制启用，Some(false) = 强制关闭）
         pub viewport_override: Option<bool>,
-        /// 待滚动到的目标行号（0-based），设置后下一帧动画滚动到该行
-        pub pending_scroll_to_line: Option<usize>,
         /// ArkTS record tab（源码/反汇编双视图）
         pub is_ark: bool,
         pub(super) image_preview: Option<ImagePreview>,
@@ -99,7 +97,6 @@ tabookit::class! {
             layout_cache: None,
             editable_layout_cache: None,
             viewport_override: None,
-            pending_scroll_to_line: None,
             is_ark: false,
             image_preview: None,
             resource_tree: None,
@@ -131,7 +128,6 @@ tabookit::class! {
             layout_cache: None,
             editable_layout_cache: None,
             viewport_override: None,
-            pending_scroll_to_line: None,
             is_ark: false,
             image_preview: None,
             resource_tree: None,

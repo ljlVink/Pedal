@@ -7,7 +7,6 @@ mod ark;
 mod export;
 mod open;
 mod platform;
-mod search;
 mod tab;
 pub(crate) mod workspace;
 

@@ -10,7 +10,6 @@ use crate::appearance::{codicon, theme};
 use crate::ui::keybindings;
 use eframe::egui;
 use egui_dock::{NodePath, TabViewer, tab_viewer::OnCloseResponse};
-use egui_editor::find_bar::FindBar;
 use egui_shell::components::menu_item;
 use rust_i18n::t;
 
@@ -32,8 +31,6 @@ pub enum TabAction {
 pub struct EditorTabViewer<'a> {
     /// 右键菜单触发的动作（每帧最多一个，由 EditorArea 消费）
     pub action: Option<TabAction>,
-    /// 编辑器内查找栏状态
-    pub find_bar: &'a mut FindBar,
     /// 归档中已保存但未落盘的条目路径
     pub jar_modified: &'a HashSet<String>,
     /// on_close 被 is_modified 拦截时记录要关闭的 tab 路径
@@ -115,46 +112,6 @@ impl TabViewer for EditorTabViewer<'_> {
             });
             ui.separator();
         }
-        // 更新搜索（先于内容渲染，提供高亮数据）
-        if self.find_bar.open {
-            match tab.active_view {
-                ActiveView::Hex => self.find_bar.update_bytes(&tab.raw_bytes),
-                ActiveView::Decompiled => self.find_bar.update_text(&tab.decompiled),
-                ActiveView::Disasm => self.find_bar.update_text(&tab.disasm_text),
-                ActiveView::Image | ActiveView::Resources => {}
-            }
-        }
-        let (matches, current) = if self.find_bar.open {
-            self.find_bar.highlight_info()
-        } else {
-            (vec![], None)
-        };
-        // 滚动到当前匹配项
-        if self.find_bar.take_scroll_request()
-            && let Some(idx) = current
-            && let Some(m) = matches.get(idx)
-        {
-            match tab.active_view {
-                ActiveView::Hex => {
-                    tab.hex_state.scroll_to_byte = Some(m.start);
-                }
-                ActiveView::Decompiled => {
-                    let line = tab.decompiled.as_bytes()[..m.start.min(tab.decompiled.len())]
-                        .iter()
-                        .filter(|&&b| b == b'\n')
-                        .count();
-                    tab.pending_scroll_to_line = Some(line);
-                }
-                ActiveView::Disasm => {
-                    let line = tab.disasm_text.as_bytes()[..m.start.min(tab.disasm_text.len())]
-                        .iter()
-                        .filter(|&&b| b == b'\n')
-                        .count();
-                    tab.pending_scroll_to_line = Some(line);
-                }
-                ActiveView::Image | ActiveView::Resources => {}
-            }
-        }
         // ArkTS tab：反汇编视图懒生成
         if tab.active_view == ActiveView::Disasm
             && tab.disasm_text.is_empty()
@@ -174,20 +131,15 @@ impl TabViewer for EditorTabViewer<'_> {
             .auto_shrink([false, false])
             .show(ui, |ui| match tab.active_view {
                 ActiveView::Decompiled if tab.is_text => {
-                    render::render_editable(ui, tab, &matches, current);
+                    render::render_editable(ui, tab);
                 }
                 ActiveView::Decompiled => {
-                    render::render_decompiled(ui, tab, &matches, current);
+                    render::render_decompiled(ui, tab);
                 }
-                ActiveView::Hex => render::render_hex(ui, tab, &matches, current),
-                ActiveView::Disasm => render::render_disasm(ui, tab, &matches, current),
+                ActiveView::Hex => render::render_hex(ui, tab),
+                ActiveView::Disasm => render::render_disasm(ui, tab),
                 ActiveView::Image | ActiveView::Resources => {}
             });
-        // 浮动查找栏（overlay，用 clip_rect 定位到可见区域，不随 ScrollArea 滚动）
-        if self.find_bar.open {
-            let fbt = theme::find_bar_theme();
-            self.find_bar.render_overlay(ui, ui.clip_rect(), &fbt);
-        }
     }
 
     fn context_menu(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, _path: NodePath) {

@@ -23,25 +23,4 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         ui.close();
         app.save_active_tab();
     }
-    ui.separator();
-    if menu_item_if(
-        ui,
-        mt,
-        &t!("menu.find"),
-        Some(&app.settings.keymap.find),
-        state.has_tab,
-    ) {
-        ui.close();
-        app.layout.editor.open_find();
-    }
-    if menu_item_if(
-        ui,
-        mt,
-        &t!("menu.find_in_files"),
-        Some(&app.settings.keymap.find_in_files),
-        state.has_jar,
-    ) {
-        ui.close();
-        app.layout.search.open();
-    }
 }

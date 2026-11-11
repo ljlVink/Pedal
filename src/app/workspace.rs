@@ -5,7 +5,6 @@
 
 use super::ark::ArkMeta;
 use crate::task::Task;
-use crate::ui::search::index::SearchIndex;
 use pedal_archive::error::ArchiveError;
 use pedal_archive::jar::{JarArchive, LoadProgress};
 use std::sync::Arc;
@@ -36,8 +35,6 @@ pub(crate) struct LoadingState {
 pub(crate) struct LoadedState {
     /// 归档（ArkTS 工作区为虚拟归档）
     pub jar: JarArchive,
-    /// 搜索索引（ArkTS 工作区加载完成后由内存源码构建）
-    pub search_index: Option<Arc<SearchIndex>>,
     /// ArkTS 工作区元数据（打开的是 abc/HAP/HSP 时存在）
     pub ark: Option<ArkMeta>,
 }
@@ -93,10 +90,6 @@ impl Workspace {
 impl LoadedState {
     /// 创建新的已加载状态
     pub(crate) fn new(jar: JarArchive) -> Self {
-        Self {
-            jar,
-            search_index: None,
-            ark: None,
-        }
+        Self { jar, ark: None }
     }
 }

@@ -13,7 +13,7 @@ use std::sync::Arc;
 impl FilePanel {
     /// 更新面板隐式焦点：点击面板内获得，点击面板外或有 widget 聚焦时失去
     pub(super) fn update_focus(&mut self, ctx: &egui::Context, rect: egui::Rect) {
-        // 有文本控件聚焦时（如编辑器 TextEdit、查找栏）让出焦点
+        // 有文本控件聚焦时（如编辑器 TextEdit）让出焦点
         if ctx.memory(|m| m.focused().is_some()) {
             if self.focused {
                 self.focused = false;

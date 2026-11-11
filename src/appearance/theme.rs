@@ -261,20 +261,10 @@ pub const EXPLORER_MIN_WIDTH: f32 = 160.0;
 pub const EXPLORER_MAX_WIDTH: f32 = 600.0;
 /// Explorer 折叠/展开动画时长（秒）
 pub const EXPLORER_ANIM_DURATION: f32 = 0.08;
-/// 搜索结果列表最小高度
-pub const SEARCH_MIN_RESULTS_H: f32 = 80.0;
-/// 搜索预览面板最小高度
-pub const SEARCH_MIN_PREVIEW_H: f32 = 80.0;
-/// 搜索面板分割线拖拽手柄高度
-pub const SEARCH_RESIZE_HANDLE_H: f32 = 6.0;
 /// 文件树行高
 pub const TREE_ROW_HEIGHT: f32 = 22.0;
 /// 文件树展开/折叠动画时长（秒）
 pub const TREE_EXPAND_DURATION: f32 = 0.12;
-/// 搜索结果行高
-pub const SEARCH_ROW_HEIGHT: f32 = 24.0;
-/// 搜索分组 header 行高
-pub const SEARCH_GROUP_HEADER_HEIGHT: f32 = 28.0;
 
 /// Explorer / Editor 面板共用的 island 样式
 pub fn island_style() -> egui_shell::components::IslandStyle {
@@ -431,41 +421,6 @@ pub fn editor_theme() -> egui_editor::CodeViewTheme {
         code_font_size: 13.0,
         line_highlight: verdigris_alpha(50),
         word_highlight_bg: verdigris_alpha(80),
-    }
-}
-
-/// 编辑器查找栏主题
-pub fn find_bar_theme() -> egui_editor::FindBarTheme {
-    egui_editor::FindBarTheme {
-        bg: palette().bg_dark,
-        border: palette().border,
-        text_primary: palette().text_primary,
-        text_muted: palette().text_muted,
-        error_color: palette().accent_red,
-        icons: egui_editor::theme::FindBarIcons {
-            close: codicon::CLOSE,
-            next: codicon::CHEVRON_DOWN,
-            prev: codicon::CHEVRON_UP,
-            regex: codicon::REGEX,
-            whole_word: codicon::WHOLE_WORD,
-            case_sensitive: codicon::CASE_SENSITIVE,
-            search: codicon::SEARCH,
-            font: codicon::family(),
-        },
-        labels: egui_editor::theme::FindBarLabels {
-            close: t!("find.close").to_string(),
-            next: t!("find.next").to_string(),
-            prev: t!("find.prev").to_string(),
-            use_regex: t!("find.use_regex").to_string(),
-            match_word: t!("find.match_word").to_string(),
-            match_case: t!("find.match_case").to_string(),
-            no_results: t!("find.no_results").to_string(),
-            result_fmt: |current, total| {
-                t!("find.result_count", current = current, total = total).to_string()
-            },
-            hint: t!("find.hint").to_string(),
-        },
-        button: flat_button_theme(palette().text_muted),
     }
 }
 

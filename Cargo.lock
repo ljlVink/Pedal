@@ -1092,9 +1092,7 @@ name = "egui-editor"
 version = "0.2.1"
 dependencies = [
  "eframe",
- "egui-shell",
  "phf",
- "tabookit",
  "tree-sitter",
  "tree-sitter-html",
  "tree-sitter-json",
@@ -2789,7 +2787,6 @@ dependencies = [
  "mimalloc",
  "pedal-abc-bridge",
  "pedal-archive",
- "regex",
  "rfd",
  "rust-i18n",
  "serde",

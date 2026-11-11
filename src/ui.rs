@@ -8,5 +8,4 @@ pub mod explorer;
 pub mod keybindings;
 pub mod layout;
 pub mod menu;
-pub mod search;
 pub mod status_bar;

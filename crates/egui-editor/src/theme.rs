@@ -3,7 +3,6 @@
 //! @author sky
 
 use eframe::egui;
-use egui_shell::components::FlatButtonTheme;
 
 /// 语法高亮配色（12 种 token 类型）
 #[derive(Clone)]
@@ -55,69 +54,4 @@ pub struct CodeViewTheme {
     pub line_highlight: egui::Color32,
     /// 选中同名字段高亮背景
     pub word_highlight_bg: egui::Color32,
-}
-
-/// 查找栏图标配置
-#[derive(Clone)]
-pub struct FindBarIcons {
-    /// 关闭
-    pub close: &'static str,
-    /// 下一个
-    pub next: &'static str,
-    /// 上一个
-    pub prev: &'static str,
-    /// 正则
-    pub regex: &'static str,
-    /// 全词匹配
-    pub whole_word: &'static str,
-    /// 大小写敏感
-    pub case_sensitive: &'static str,
-    /// 搜索
-    pub search: &'static str,
-    /// 图标字体族
-    pub font: egui::FontFamily,
-}
-
-/// 查找栏标签文本
-#[derive(Clone)]
-pub struct FindBarLabels {
-    /// 关闭 tooltip
-    pub close: String,
-    /// 下一个 tooltip
-    pub next: String,
-    /// 上一个 tooltip
-    pub prev: String,
-    /// 正则 tooltip
-    pub use_regex: String,
-    /// 全词匹配 tooltip
-    pub match_word: String,
-    /// 大小写 tooltip
-    pub match_case: String,
-    /// 无结果提示
-    pub no_results: String,
-    /// 结果计数格式化（current 1-indexed, total）
-    pub result_fmt: fn(usize, usize) -> String,
-    /// 输入框 hint
-    pub hint: String,
-}
-
-/// 查找栏主题
-#[derive(Clone)]
-pub struct FindBarTheme {
-    /// island 背景色
-    pub bg: egui::Color32,
-    /// island 边框色
-    pub border: egui::Color32,
-    /// 主文字色
-    pub text_primary: egui::Color32,
-    /// 暗淡文字色
-    pub text_muted: egui::Color32,
-    /// 无结果文字色
-    pub error_color: egui::Color32,
-    /// 图标配置
-    pub icons: FindBarIcons,
-    /// 标签文本
-    pub labels: FindBarLabels,
-    /// 按钮配色
-    pub button: FlatButtonTheme,
 }

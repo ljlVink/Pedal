@@ -29,7 +29,6 @@ encoding_rs = "0.8"
 chardetng = "1"
 sha2 = "0.11"
 indexmap = "2"
-regex = "1"
 rust-i18n = "3"
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 

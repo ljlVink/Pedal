@@ -336,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    fn resources_open_as_readonly_tree_with_json_export_and_search() {
+    fn resources_open_as_readonly_tree_with_json_export() {
         use std::io::Write;
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("crates/pedal-abc-bridge/tests/fixtures/resources/v2.index");
@@ -384,8 +384,6 @@ mod tests {
         assert!(app.layout.editor.focused_tab().unwrap().active_view == ActiveView::Hex);
         app.layout.editor.cycle_view();
         assert!(app.layout.editor.focused_tab().unwrap().active_view == ActiveView::Resources);
-        app.layout.editor.open_find();
-        assert!(!app.layout.editor.find_bar.open);
         app.layout.file_panel.pending_open = Some("other/resources.index".into());
         app.handle_pending_open();
         let tab = app.layout.editor.focused_tab().unwrap();
@@ -399,18 +397,6 @@ mod tests {
         assert!(tab.language == egui_editor::highlight::Language::Json);
         assert!(tab.active_view == ActiveView::Decompiled);
         assert!(tab.decompiled.contains("你好"));
-        app.rebuild_search_index();
-        assert!(
-            app.workspace
-                .loaded()
-                .unwrap()
-                .search_index
-                .as_ref()
-                .unwrap()
-                .entries
-                .iter()
-                .any(|entry| entry.entry_path == generated && entry.source.contains("greeting"))
-        );
         app.layout.file_panel.pending_open = Some("resources/rawfile/data.json".into());
         app.handle_pending_open();
         let tab = app.layout.editor.focused_tab().unwrap();
@@ -605,7 +591,7 @@ mod tests {
     }
 
     #[test]
-    fn camera_union_records_open_search_and_export_without_descriptor_directories() {
+    fn camera_union_records_open_and_export_without_descriptor_directories() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("test_examples/system_framework/camera_framework_taihe_abc.abc");
         if !fixture.exists() {
@@ -623,7 +609,6 @@ mod tests {
         let mut loaded = LoadedState::new(jar);
         loaded.ark = Some(meta);
         let mut app = app_with_workspace(loaded);
-        app.rebuild_search_index();
 
         let output = std::env::temp_dir().join(format!(
             "pedal-union-export-{}-{}",
@@ -660,15 +645,6 @@ mod tests {
                     .classes
                     .iter()
                     .any(|c| c.offset == class_off && c.name.starts_with("{U"))
-            );
-            assert!(
-                loaded
-                    .search_index
-                    .as_ref()
-                    .unwrap()
-                    .entries
-                    .iter()
-                    .any(|e| e.entry_path == *path && format!("{}.ets", e.class_name) == *label)
             );
             // 使用实际虚拟路径执行磁盘写入，覆盖 Windows 文件名限制。
             let exported = output.join(path);

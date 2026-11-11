@@ -3,7 +3,7 @@
 //! @author sky
 //! @author ljlVink
 
-use crate::app::workspace::{LoadedState, Workspace};
+use crate::app::workspace::Workspace;
 use crate::app::{App, ConfirmAction};
 use crate::appearance::theme;
 use crate::settings::{self, Settings};
@@ -15,7 +15,6 @@ use std::sync::atomic::Ordering;
 
 use super::editor::EditorArea;
 use super::explorer::{FileAction, FilePanel, tree};
-use super::search::SearchDialog;
 use super::status_bar::StatusBar;
 
 /// 布局区域矩形
@@ -37,8 +36,6 @@ tabookit::class! {
         pub editor: EditorArea,
         /// 底部状态栏
         pub status_bar: StatusBar,
-        /// 搜索浮动面板
-        pub search: SearchDialog,
         /// 设置面板
         pub settings_panel: SettingsPanel<Settings>,
         /// 快捷键映射
@@ -61,7 +58,6 @@ tabookit::class! {
             file_panel: FilePanel::new(),
             editor: EditorArea::new(),
             status_bar: StatusBar::default(),
-            search: SearchDialog::new(),
             settings_panel: settings::new_panel(),
             keys,
             explorer_width: theme::FILE_PANEL_WIDTH,
@@ -107,7 +103,6 @@ impl App {
         );
         if !loading {
             self.poll_export_jar();
-            self.rebuild_search_index();
         }
     }
 
@@ -146,24 +141,8 @@ impl App {
         self.render_status_bar(ui, rects.status, rects.editor.left());
     }
 
-    /// 渲染浮动层（搜索、设置、通知、FPS、确认弹窗）
+    /// 渲染浮动层（设置、通知、FPS、确认弹窗）
     fn render_overlays(&mut self, ui: &mut egui::Ui, shell_theme: &egui_shell::ShellTheme) {
-        let search_index = self.workspace.loaded().and_then(|s| s.search_index.clone());
-        let has_jar = self.workspace.is_loaded();
-        self.layout.search.sync_state(search_index, has_jar, false);
-        self.layout.search.render(ui.ctx(), shell_theme);
-        if let Some(req) = self.layout.search.take_pending_open()
-            && !self
-                .layout
-                .editor
-                .focus_tab_at(&req.entry_path, Some(req.line))
-        {
-            let path = req.entry_path.clone();
-            self.layout.file_panel.pending_open = Some(req.entry_path);
-            self.handle_pending_open();
-            // 新开的 tab 也需要设置滚动目标
-            self.layout.editor.focus_tab_at(&path, Some(req.line));
-        }
         let output = settings::show(&mut self.layout.settings_panel, ui.ctx(), shell_theme);
         if let Some(new_settings) = output.settings {
             self.apply_settings(new_settings, ui.ctx());
@@ -253,7 +232,6 @@ impl App {
         if new_settings.theme != self.settings.theme {
             theme::apply(ctx, new_settings.theme);
             self.layout.editor.clear_layout_caches();
-            self.layout.search.clear_layout_cache();
         }
         self.settings = new_settings;
         if let Err(e) = self.settings.save() {
@@ -383,7 +361,7 @@ impl App {
         if !loaded.jar.delete(path) {
             return None;
         }
-        let paths = refresh_loaded_entry_indexes(loaded);
+        let paths = loaded.jar.paths().into_iter().map(str::to_string).collect();
         Some((loaded.jar.name.clone(), paths))
     }
 
@@ -399,7 +377,7 @@ impl App {
         if !loaded.jar.rename(old_path, new_path) {
             return None;
         }
-        let paths = refresh_loaded_entry_indexes(loaded);
+        let paths = loaded.jar.paths().into_iter().map(str::to_string).collect();
         Some((loaded.jar.name.clone(), paths))
     }
 
@@ -538,13 +516,6 @@ impl App {
         ctx.data_mut(|d| d.insert_temp::<(u64, f32)>(cache_id, (frame, t)));
         t
     }
-}
-
-/// 条目路径变化后刷新依赖路径列表的索引。
-fn refresh_loaded_entry_indexes(loaded: &mut LoadedState) -> Vec<String> {
-    let paths: Vec<String> = loaded.jar.paths().into_iter().map(str::to_string).collect();
-    loaded.search_index = None;
-    paths
 }
 
 /// 将用户输入规范化为归档条目路径。

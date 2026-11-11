@@ -98,10 +98,6 @@ pub struct KeymapSettings {
     pub toggle_explorer: KeyBind,
     /// 打开文件（字段名保留以兼容已有快捷键配置）
     pub open_jar: KeyBind,
-    /// 打开查找
-    pub find: KeyBind,
-    /// 打开文件中查找
-    pub find_in_files: KeyBind,
     /// 保存当前标签页
     pub save: KeyBind,
     /// 关闭当前标签页
@@ -126,8 +122,6 @@ impl Default for KeymapSettings {
         Self {
             toggle_explorer: keybindings::DEFAULT_TOGGLE_EXPLORER,
             open_jar: keybindings::DEFAULT_OPEN_JAR,
-            find: keybindings::DEFAULT_FIND,
-            find_in_files: keybindings::DEFAULT_FIND_IN_FILES,
             save: keybindings::DEFAULT_SAVE,
             close_tab: keybindings::DEFAULT_CLOSE_TAB,
             close_all_tabs: keybindings::DEFAULT_CLOSE_ALL_TABS,
@@ -361,8 +355,6 @@ fn render_keymap(km: &mut KeymapSettings, ui: &mut egui::Ui, st: &SettingsTheme)
     section_header(ui, st, &t!("settings.section_editor"));
     changed |= keybind_rows!(ui, st, hint, km, defaults,
         t!("settings.save") => save,
-        t!("settings.find") => find,
-        t!("settings.find_in_files") => find_in_files,
         t!("settings.close_tab") => close_tab,
         t!("settings.close_all_tabs") => close_all_tabs,
         t!("settings.cycle_view") => cycle_view,

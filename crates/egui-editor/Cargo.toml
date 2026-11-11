@@ -2,13 +2,11 @@
 name = "egui-editor"
 version = "0.2.1"
 edition = "2024"
-description = "Syntax-highlighted code viewer & find bar for egui"
+description = "Syntax-highlighted code viewer for egui"
 license = "MIT"
 
 [dependencies]
 eframe = { version = "0.34.1", default-features = false, features = ["glow"] }
-egui-shell = { path = "../egui-shell" }
-tabookit = { path = "../tabookit" }
 tree-sitter = "0.24"
 tree-sitter-xml = "0.7"
 tree-sitter-yaml = "0.7"

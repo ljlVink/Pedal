@@ -186,7 +186,6 @@ tabookit::class! {
         query: String,
         filter: Option<FilterResult>,
         filter_task: Option<Task<FilterResult>>,
-        search_focus: bool,
         scroll_offset: Option<f32>,
         reset_value_scroll: bool,
         search_failed: bool,
@@ -195,12 +194,8 @@ tabookit::class! {
     pub fn new(data: Arc<ResourceTreeData>) -> Self {
         let visible = data.roots.clone();
         Self { data, expanded: HashSet::new(), visible, selected: None, query: String::new(),
-            filter: None, filter_task: None, search_focus: false, scroll_offset: None,
+            filter: None, filter_task: None, scroll_offset: None,
             reset_value_scroll: false, search_failed: false }
-    }
-
-    pub fn request_search_focus(&mut self) {
-        self.search_focus = true;
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui) {
@@ -211,10 +206,6 @@ tabookit::class! {
                 .id_salt("resource_filter")
                 .hint_text(t!("resource_tree.search"))
                 .desired_width(260.0));
-            if self.search_focus {
-                search.request_focus();
-                self.search_focus = false;
-            }
             let mut changed = search.changed();
             if !self.query.is_empty() && ui.button(t!("resource_tree.clear")).clicked() {
                 self.query.clear();
